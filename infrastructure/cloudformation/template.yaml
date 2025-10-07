@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'AI-powered RFP Response Agent infrastructure'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Environment name
+  
+  SAMAPIKey:
+    Type: String
+    NoEcho: true
+    Description: API key for SAM.gov access
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 300
+    MemorySize: 512
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: INFO
+
+Resources:
+  # S3 Buckets will be defined here
+  # Lambda Functions will be defined here
+  # SQS Queues will be defined here
+  # IAM Roles will be defined here
+  # EventBridge Rules will be defined here
+  
+  # Placeholder for now - will be implemented in task 10
+  PlaceholderResource:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${Environment}-placeholder-bucket"
+
+Outputs:
+  Environment:
+    Description: Environment name
+    Value: !Ref Environment

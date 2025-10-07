@@ -25,9 +25,94 @@ Globals:
         LOG_LEVEL: INFO
 
 Resources:
+  # SQS Dead Letter Queue
+  SamJsonMessagesDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${Environment}-sqs-sam-json-messages-dlq"
+      MessageRetentionPeriod: 1209600  # 14 days
+      VisibilityTimeoutSeconds: 60
+      KmsMasterKeyId: alias/aws/sqs
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: DeadLetterQueue
+
+  # Main SQS Queue for SAM JSON messages
+  SamJsonMessagesQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${Environment}-sqs-sam-json-messages"
+      VisibilityTimeoutSeconds: 300  # 5 minutes (matches Lambda timeout)
+      MessageRetentionPeriod: 1209600  # 14 days
+      ReceiveMessageWaitTimeSeconds: 20  # Long polling
+      KmsMasterKeyId: alias/aws/sqs
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SamJsonMessagesDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: OpportunityProcessing
+
+  # S3 Bucket for extracted JSON resources (triggers SQS messages)
+  SamExtractedJsonResourcesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${Environment}-sam-extracted-json-resources"
+      VersioningConfiguration:
+        Status: Suspended
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToIA
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+          - Id: DeleteAfter90Days
+            Status: Enabled
+            ExpirationInDays: 90
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: s3:ObjectCreated:*
+            Queue: !GetAtt SamJsonMessagesQueue.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: .json
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: ProcessedOpportunities
+
+  # SQS Queue Policy to allow S3 to send messages
+  SamJsonMessagesQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref SamJsonMessagesQueue
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action:
+              - sqs:SendMessage
+            Resource: !GetAtt SamJsonMessagesQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt SamExtractedJsonResourcesBucket.Arn
+
   # S3 Buckets will be defined here
   # Lambda Functions will be defined here
-  # SQS Queues will be defined here
   # IAM Roles will be defined here
   # EventBridge Rules will be defined here
   
@@ -41,3 +126,27 @@ Outputs:
   Environment:
     Description: Environment name
     Value: !Ref Environment
+  
+  SamJsonMessagesQueueUrl:
+    Description: URL of the SQS queue for SAM JSON messages
+    Value: !Ref SamJsonMessagesQueue
+    Export:
+      Name: !Sub "${Environment}-SamJsonMessagesQueueUrl"
+  
+  SamJsonMessagesQueueArn:
+    Description: ARN of the SQS queue for SAM JSON messages
+    Value: !GetAtt SamJsonMessagesQueue.Arn
+    Export:
+      Name: !Sub "${Environment}-SamJsonMessagesQueueArn"
+  
+  SamJsonMessagesDLQUrl:
+    Description: URL of the dead letter queue
+    Value: !Ref SamJsonMessagesDLQ
+    Export:
+      Name: !Sub "${Environment}-SamJsonMessagesDLQUrl"
+  
+  SamExtractedJsonResourcesBucketName:
+    Description: Name of the S3 bucket for extracted JSON resources
+    Value: !Ref SamExtractedJsonResourcesBucket
+    Export:
+      Name: !Sub "${Environment}-SamExtractedJsonResourcesBucketName"

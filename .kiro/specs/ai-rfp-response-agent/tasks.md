@@ -89,32 +89,50 @@
     - Store processed files in sam-extracted-json-resources bucket
     - _Requirements: 2.4, 2.5_
   
-  - [ ]* 3.4 Write unit tests for opportunity processing
+  - [ ] 3.4 Write unit tests for opportunity processing
+
+
+
+
+
     - Test JSON parsing and opportunity extraction
     - Test file downloading with mocked HTTP responses
     - Test error handling for malformed data
     - _Requirements: 2.2, 2.3, 2.4_
 
-- [ ] 4. Implement SQS message queuing system
-  - [ ] 4.1 Create SQS queue configuration and S3 event integration
+- [x] 4. Implement SQS message queuing system
+
+
+
+
+
+
+  - [x] 4.1 Create SQS queue configuration and S3 event integration
+
+
     - Set up sqs-sam-json-messages queue with dead letter queue
     - Configure S3 event notifications to trigger SQS messages
     - Implement message formatting with S3 object metadata
     - _Requirements: 3.1, 3.2, 3.4_
   
-  - [ ] 4.2 Implement SQS message processing utilities
+
+  - [x] 4.2 Implement SQS message processing utilities
+
     - Create SQS client for message handling in Lambda functions
     - Implement message parsing and validation
     - Add error handling and dead letter queue integration
     - _Requirements: 3.3, 3.4_
   
+
   - [ ]* 4.3 Write unit tests for SQS integration
+
     - Test message formatting and parsing
     - Test error handling and retry logic
     - Test dead letter queue functionality
     - _Requirements: 3.1, 3.2, 3.4_
 
 - [ ] 5. Set up Bedrock Knowledge Base and AI integration
+
   - [ ] 5.1 Create Company Information Knowledge Base
     - Set up Bedrock Knowledge Base with S3 vector store configuration
     - Configure sam-company-info bucket as data source
@@ -129,12 +147,14 @@
     - _Requirements: 5.3, 5.4_
   
   - [ ]* 5.3 Write unit tests for Bedrock integration
+
     - Test knowledge base queries with mocked responses
     - Test LLM model invocations and response parsing
     - Test token limiting and throttling mechanisms
     - _Requirements: 4.3, 5.3, 5.4_
 
 - [ ] 6. Implement AI-powered opportunity matching Lambda function
+
   - [ ] 6.1 Create sam-sqs-generate-match-reports Lambda function structure
     - Set up Lambda function with SQS trigger and batch processing
     - Implement environment variable configuration for limits and models
@@ -163,6 +183,7 @@
     - _Requirements: 6.1, 6.2, 6.3, 6.4_
   
   - [ ]* 6.5 Write unit tests for AI matching
+
     - Test opportunity information extraction with sample data
     - Test company matching logic and score calculation
     - Test result categorization and storage

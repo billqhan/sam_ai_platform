@@ -2,6 +2,16 @@
 
 An automated system that retrieves government contracting opportunities from SAM.gov, processes them using AWS Bedrock AI, and generates match reports to identify relevant business opportunities.
 
+## Development Methodology
+
+This project was developed using Kiro's spec-driven development methodology, following a systematic approach from requirements gathering through design to implementation. The complete development process is documented in the [project specifications](.kiro/specs/ai-rfp-response-agent/README.md), which includes:
+
+- **Requirements Analysis**: 11 detailed requirements with EARS format acceptance criteria covering the complete system workflow
+- **System Design**: Comprehensive serverless architecture design using AWS services with event-driven processing
+- **Implementation Planning**: 11 major tasks with 40+ actionable sub-tasks for incremental development
+
+The spec documents provide full traceability from business requirements to implementation tasks, ensuring systematic and well-documented development. For detailed information about the development process and methodology, see the [spec summary](.kiro/specs/ai-rfp-response-agent/README.md).
+
 ## Architecture
 
 The system uses a serverless, event-driven architecture built on AWS:

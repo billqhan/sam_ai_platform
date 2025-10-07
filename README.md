@@ -12,6 +12,16 @@ This project was developed using Kiro's spec-driven development methodology, fol
 
 The spec documents provide full traceability from business requirements to implementation tasks, ensuring systematic and well-documented development. For detailed information about the development process and methodology, see the [spec summary](.kiro/specs/ai-rfp-response-agent/README.md).
 
+### Development Process Documentation
+
+The `docs/` folder contains the original prompts and interactions used during the spec creation phase in Kiro's "Let's Build" feature:
+
+- **Initial Concept**: The original system requirements and architecture vision
+- **Requirements Refinement**: Iterative prompts used to clarify and expand requirements
+- **Design Evolution**: Prompts that guided the architectural design process
+
+These documents provide insight into the iterative development process and can serve as reference for similar projects or future enhancements.
+
 ## Architecture
 
 The system uses a serverless, event-driven architecture built on AWS:
@@ -30,6 +40,12 @@ The system uses a serverless, event-driven architecture built on AWS:
 │   ├── requirements.md             # Feature requirements
 │   ├── design.md                   # System design
 │   └── tasks.md                    # Implementation tasks
+├── docs/                           # Development process documentation
+│   └── prompts/                    # Original spec creation prompts
+│       ├── 00-Kiro_Start_Image.png # Kiro "Let's Build" interface screenshot
+│       ├── 01-Initial_prompt.txt   # Initial system concept and requirements
+│       ├── 02-Requirement_update_prompt.txt  # Requirements refinement prompts
+│       └── 03-Design_Document_update_prompt.txt  # Design iteration prompts
 ├── .github/
 │   └── workflows/
 │       └── deploy.yml              # GitHub Actions CI/CD (manual trigger only)

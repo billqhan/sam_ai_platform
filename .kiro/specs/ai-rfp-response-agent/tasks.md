@@ -334,22 +334,32 @@
     - Test file storage and website integration
     - _Requirements: 9.2, 9.3, 9.4_
 
-- [ ] 10. Implement infrastructure as code and deployment
-  - [ ] 10.1 Create AWS CloudFormation or CDK templates
+- [x] 10. Implement infrastructure as code and deployment
+
+
+
+
+  - [x] 10.1 Create AWS CloudFormation or CDK templates
+
+
     - Define all S3 buckets with proper configurations and lifecycle policies
     - Create Lambda functions with correct memory, timeout, and environment variables
     - Set up SQS queue with dead letter queue configuration
     - Configure EventBridge rules for scheduled triggers
     - _Requirements: All infrastructure requirements_
   
-  - [ ] 10.2 Implement IAM roles and security policies
+  - [x] 10.2 Implement IAM roles and security policies
+
+
     - Create SamJsonProcessorRole and other function-specific IAM roles
     - Implement least privilege access policies for all services
     - Configure S3 bucket policies and encryption settings
     - Set up CloudWatch logging and monitoring permissions
     - _Requirements: 10.1, 10.2, 10.3, 10.4_
   
-  - [ ] 10.3 Create deployment scripts and CI/CD pipeline
+  - [x] 10.3 Create deployment scripts and CI/CD pipeline
+
+
     - Implement automated deployment scripts for Lambda functions
     - Create package management for Python dependencies
     - Set up environment-specific configuration management
@@ -361,14 +371,23 @@
     - Test error handling and recovery scenarios
     - Test performance under load and concurrent processing
     - _Requirements: All system requirements_
+-
 
-- [ ] 11. Implement monitoring and alerting
-  - [ ] 11.1 Create CloudWatch metrics and alarms
+- [x] 11. Implement monitoring and alerting
+
+
+
+
+  - [x] 11.1 Create CloudWatch metrics and alarms
+
+
     - Set up custom metrics for processing rates, error rates, and match scores
     - Create alarms for high error rates and processing delays
     - Implement cost monitoring and resource utilization tracking
     - _Requirements: 9.1, 9.2, 9.4, 9.5_
   
+
+
   - [ ] 11.2 Implement structured logging and tracing
     - Add structured JSON logging to all Lambda functions
     - Implement correlation IDs for request tracing

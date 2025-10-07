@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AI-powered RFP Response Agent - S3 Event Notifications Template'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    Description: 'Environment name for resource naming'
+  
+  SqsSamJsonMessagesQueueArn:
+    Type: String
+    Description: 'ARN of the SQS queue for JSON messages'
+
+Resources:
+  # S3 Bucket Notification Configurations
+  SamDataInBucketNotification:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'sam-data-in-${Environment}'
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-json-processor-${Environment}'
+
+  SamExtractedJsonResourcesBucketNotification:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'sam-extracted-json-resources-${Environment}'
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: s3:ObjectCreated:*
+            Queue: !Ref SqsSamJsonMessagesQueueArn
+
+  SamMatchingOutSqsBucketNotification:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'sam-matching-out-sqs-${Environment}'
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-produce-user-report-${Environment}'
+
+  SamMatchingOutRunsBucketNotification:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'sam-matching-out-runs-${Environment}'
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: 'runs/2'
+            Function: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-produce-web-reports-${Environment}'
+
+Outputs:
+  SamDataInBucketNotificationId:
+    Description: 'ID of the SAM data in bucket notification configuration'
+    Value: !Ref SamDataInBucketNotification
+    Export:
+      Name: !Sub '${AWS::StackName}-SamDataInBucketNotification'
+  
+  SamExtractedJsonResourcesBucketNotificationId:
+    Description: 'ID of the extracted JSON resources bucket notification configuration'
+    Value: !Ref SamExtractedJsonResourcesBucketNotification
+    Export:
+      Name: !Sub '${AWS::StackName}-SamExtractedJsonResourcesBucketNotification'

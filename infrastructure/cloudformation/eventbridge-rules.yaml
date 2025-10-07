@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AI-powered RFP Response Agent - EventBridge Rules Template'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    Description: 'Environment name for resource naming'
+  
+  SamGovDailyDownloadFunctionArn:
+    Type: String
+    Description: 'ARN of the SAM.gov daily download Lambda function'
+  
+  SamMergeAndArchiveResultLogsFunctionArn:
+    Type: String
+    Description: 'ARN of the merge and archive Lambda function'
+
+Resources:
+  # EventBridge Rules
+  SamGovDailyDownloadRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'sam-gov-daily-download-${Environment}'
+      Description: 'Trigger SAM.gov daily download Lambda function'
+      ScheduleExpression: 'cron(0 6 * * ? *)'  # Daily at 6 AM UTC
+      State: ENABLED
+      Targets:
+        - Arn: !Ref SamGovDailyDownloadFunctionArn
+          Id: 'SamGovDailyDownloadTarget'
+
+  SamLambdaEvery5MinSummarizerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'sam-lambda-every-5min-summarizer-${Environment}'
+      Description: 'Trigger merge and archive Lambda function every 5 minutes'
+      ScheduleExpression: 'rate(5 minutes)'
+      State: ENABLED
+      Targets:
+        - Arn: !Ref SamMergeAndArchiveResultLogsFunctionArn
+          Id: 'SamMergeAndArchiveTarget'
+
+  # Lambda Permissions for EventBridge
+  SamGovDailyDownloadPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SamGovDailyDownloadFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SamGovDailyDownloadRule.Arn
+
+  SamMergeAndArchivePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SamMergeAndArchiveResultLogsFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SamLambdaEvery5MinSummarizerRule.Arn
+
+Outputs:
+  SamGovDailyDownloadRuleArn:
+    Description: 'ARN of the daily download EventBridge rule'
+    Value: !GetAtt SamGovDailyDownloadRule.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamGovDailyDownloadRule'
+  
+  SamLambdaEvery5MinSummarizerRuleArn:
+    Description: 'ARN of the 5-minute summarizer EventBridge rule'
+    Value: !GetAtt SamLambdaEvery5MinSummarizerRule.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamLambdaEvery5MinSummarizerRule'

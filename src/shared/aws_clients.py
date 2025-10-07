@@ -4,10 +4,11 @@ AWS service clients with standardized configuration and error handling.
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError, BotoCoreError
-import logging
 from typing import Optional
+from .logging_config import get_logger
+from .tracing import TracingContext
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class AWSClientManager:
     """Centralized AWS client management with retry configuration."""
@@ -30,21 +31,30 @@ class AWSClientManager:
     def s3(self):
         """Get S3 client with retry configuration."""
         if self._s3_client is None:
-            self._s3_client = boto3.client('s3', config=self.config)
+            with TracingContext("initialize_s3_client", "AWS"):
+                logger.info("Initializing S3 client", region=self.region_name)
+                self._s3_client = boto3.client('s3', config=self.config)
+                logger.debug("S3 client initialized successfully")
         return self._s3_client
     
     @property
     def sqs(self):
         """Get SQS client with retry configuration."""
         if self._sqs_client is None:
-            self._sqs_client = boto3.client('sqs', config=self.config)
+            with TracingContext("initialize_sqs_client", "AWS"):
+                logger.info("Initializing SQS client", region=self.region_name)
+                self._sqs_client = boto3.client('sqs', config=self.config)
+                logger.debug("SQS client initialized successfully")
         return self._sqs_client
     
     @property
     def bedrock(self):
         """Get Bedrock client with retry configuration."""
         if self._bedrock_client is None:
-            self._bedrock_client = boto3.client('bedrock-runtime', config=self.config)
+            with TracingContext("initialize_bedrock_client", "AWS"):
+                logger.info("Initializing Bedrock client", region=self.region_name)
+                self._bedrock_client = boto3.client('bedrock-runtime', config=self.config)
+                logger.debug("Bedrock client initialized successfully")
         return self._bedrock_client
     
     @property

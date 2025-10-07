@@ -1,0 +1,437 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AI-powered RFP Response Agent - Enhanced IAM Security Policies Template'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    Description: 'Environment name for resource naming'
+
+Resources:
+  # KMS Key for additional encryption
+  SamProcessingKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: 'KMS key for AI RFP Response Agent encryption'
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow Lambda Functions
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/SamGovDailyDownloadRole-${Environment}'
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/SamJsonProcessorRole-${Environment}'
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/SamSqsGenerateMatchReportsRole-${Environment}'
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/SamProduceUserReportRole-${Environment}'
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/SamMergeAndArchiveResultLogsRole-${Environment}'
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/SamProduceWebReportsRole-${Environment}'
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: '*'
+
+  SamProcessingKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/sam-processing-${Environment}'
+      TargetKeyId: !Ref SamProcessingKMSKey
+
+  # Enhanced IAM Policies for Security
+  SamGovDailyDownloadSecurityPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub 'SamGovDailyDownloadSecurityPolicy-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: S3BucketAccess
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:PutObjectAcl
+              - s3:PutObjectVersionAcl
+            Resource:
+              - !Sub 'arn:aws:s3:::sam-data-in-${Environment}/*'
+              - !Sub 'arn:aws:s3:::sam-download-files-logs-${Environment}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-server-side-encryption': 'AES256'
+          - Sid: S3BucketList
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              - !Sub 'arn:aws:s3:::sam-data-in-${Environment}'
+              - !Sub 'arn:aws:s3:::sam-download-files-logs-${Environment}'
+          - Sid: KMSAccess
+            Effect: Allow
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: !GetAtt SamProcessingKMSKey.Arn
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/sam-gov-daily-download-${Environment}:*'
+      Roles:
+        - !Sub 'SamGovDailyDownloadRole-${Environment}'
+
+  SamJsonProcessorSecurityPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub 'SamJsonProcessorSecurityPolicy-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: S3SourceBucketAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
+            Resource: !Sub 'arn:aws:s3:::sam-data-in-${Environment}/*'
+          - Sid: S3DestinationBucketAccess
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:PutObjectAcl
+              - s3:PutObjectVersionAcl
+            Resource: !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-server-side-encryption': 'AES256'
+          - Sid: S3BucketList
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              - !Sub 'arn:aws:s3:::sam-data-in-${Environment}'
+              - !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}'
+          - Sid: KMSAccess
+            Effect: Allow
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: !GetAtt SamProcessingKMSKey.Arn
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/sam-json-processor-${Environment}:*'
+      Roles:
+        - !Sub 'SamJsonProcessorRole-${Environment}'
+
+  SamSqsGenerateMatchReportsSecurityPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub 'SamSqsGenerateMatchReportsSecurityPolicy-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: SQSAccess
+            Effect: Allow
+            Action:
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:GetQueueAttributes
+            Resource: !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:sqs-sam-json-messages-${Environment}'
+          - Sid: S3SourceAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
+            Resource: !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}/*'
+          - Sid: S3DestinationAccess
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:PutObjectAcl
+            Resource:
+              - !Sub 'arn:aws:s3:::sam-matching-out-sqs-${Environment}/*'
+              - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-server-side-encryption': 'AES256'
+          - Sid: S3BucketList
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              - !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}'
+              - !Sub 'arn:aws:s3:::sam-matching-out-sqs-${Environment}'
+              - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}'
+          - Sid: BedrockAccess
+            Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+              - bedrock:Retrieve
+              - bedrock:RetrieveAndGenerate
+            Resource:
+              - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0'
+              - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*'
+            Condition:
+              StringEquals:
+                'aws:RequestedRegion': !Ref 'AWS::Region'
+          - Sid: KMSAccess
+            Effect: Allow
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: !GetAtt SamProcessingKMSKey.Arn
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/sam-sqs-generate-match-reports-${Environment}:*'
+      Roles:
+        - !Sub 'SamSqsGenerateMatchReportsRole-${Environment}'
+
+  SamProduceUserReportSecurityPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub 'SamProduceUserReportSecurityPolicy-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: S3SourceAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
+            Resource: !Sub 'arn:aws:s3:::sam-matching-out-sqs-${Environment}/*'
+          - Sid: S3DestinationAccess
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:PutObjectAcl
+            Resource: !Sub 'arn:aws:s3:::sam-opportunity-responses-${Environment}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-server-side-encryption': 'AES256'
+          - Sid: S3BucketList
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              - !Sub 'arn:aws:s3:::sam-matching-out-sqs-${Environment}'
+              - !Sub 'arn:aws:s3:::sam-opportunity-responses-${Environment}'
+          - Sid: KMSAccess
+            Effect: Allow
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: !GetAtt SamProcessingKMSKey.Arn
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/sam-produce-user-report-${Environment}:*'
+      Roles:
+        - !Sub 'SamProduceUserReportRole-${Environment}'
+
+  SamMergeAndArchiveResultLogsSecurityPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub 'SamMergeAndArchiveResultLogsSecurityPolicy-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: S3FullAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
+              - s3:PutObject
+              - s3:PutObjectAcl
+              - s3:DeleteObject
+              - s3:DeleteObjectVersion
+            Resource: !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-server-side-encryption': 'AES256'
+          - Sid: S3BucketAccess
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:ListBucketVersions
+            Resource: !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}'
+          - Sid: KMSAccess
+            Effect: Allow
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: !GetAtt SamProcessingKMSKey.Arn
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/sam-merge-and-archive-result-logs-${Environment}:*'
+      Roles:
+        - !Sub 'SamMergeAndArchiveResultLogsRole-${Environment}'
+
+  SamProduceWebReportsSecurityPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub 'SamProduceWebReportsSecurityPolicy-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: S3SourceAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
+            Resource: !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}/*'
+          - Sid: S3SourceBucketList
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource: !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}'
+          - Sid: S3WebsiteAccess
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:PutObjectAcl
+            Resource: !Sub 'arn:aws:s3:::sam-website-${Environment}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-server-side-encryption': 'AES256'
+          - Sid: S3WebsiteBucketList
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource: !Sub 'arn:aws:s3:::sam-website-${Environment}'
+          - Sid: KMSAccess
+            Effect: Allow
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: !GetAtt SamProcessingKMSKey.Arn
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/sam-produce-web-reports-${Environment}:*'
+      Roles:
+        - !Sub 'SamProduceWebReportsRole-${Environment}'
+
+  # CloudWatch Monitoring Role for enhanced monitoring
+  SamCloudWatchMonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'SamCloudWatchMonitoringRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                - lambda.amazonaws.com
+                - events.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+      Policies:
+        - PolicyName: CustomMetricsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:ListMetrics
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'cloudwatch:namespace': 'AI-RFP-Response-Agent'
+
+  # Security Group for VPC Lambda functions (if needed)
+  SamLambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub 'sam-lambda-sg-${Environment}'
+      GroupDescription: 'Security group for AI RFP Response Agent Lambda functions'
+      VpcId: !Ref 'AWS::NoValue'  # Will be set if VPC is used
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: 'HTTPS outbound for AWS services'
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: 'HTTP outbound for SAM.gov API'
+      Tags:
+        - Key: Name
+          Value: !Sub 'sam-lambda-sg-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  SamProcessingKMSKeyId:
+    Description: 'KMS Key ID for SAM processing encryption'
+    Value: !Ref SamProcessingKMSKey
+    Export:
+      Name: !Sub '${AWS::StackName}-SamProcessingKMSKey'
+  
+  SamProcessingKMSKeyArn:
+    Description: 'KMS Key ARN for SAM processing encryption'
+    Value: !GetAtt SamProcessingKMSKey.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamProcessingKMSKeyArn'
+  
+  SamCloudWatchMonitoringRoleArn:
+    Description: 'ARN of the CloudWatch monitoring role'
+    Value: !GetAtt SamCloudWatchMonitoringRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamCloudWatchMonitoringRole'
+  
+  SamLambdaSecurityGroupId:
+    Description: 'Security Group ID for Lambda functions'
+    Value: !Ref SamLambdaSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-SamLambdaSecurityGroup'

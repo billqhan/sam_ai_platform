@@ -18,6 +18,9 @@ from shared.sqs_processor import create_sqs_processor, SQSMessageValidator
 from shared.sqs_utils import S3EventMessage
 from shared.bedrock_utils import get_bedrock_client
 from shared.error_handling import RetryableError, ProcessingError
+from shared.tracing import trace_lambda_handler, TracingContext, add_trace_annotation
+from shared.metrics import get_business_metrics
+from shared.logging_config import PerformanceTimer
 
 logger = get_logger(__name__)
 
@@ -27,6 +30,7 @@ class OpportunityMatchProcessor:
     def __init__(self):
         self.bedrock_client = get_bedrock_client()
         self.s3_client = aws_clients.s3
+        self.business_metrics = get_business_metrics()
         
         # Configuration from environment variables
         self.debug_mode = config.get_debug_mode()
@@ -45,15 +49,14 @@ class OpportunityMatchProcessor:
         self.model_id_match = config.bedrock.model_id_match
         
         if self.debug_mode:
-            logger.info("Debug mode enabled", extra={
-                'process_delay_seconds': self.process_delay_seconds,
-                'match_threshold': self.match_threshold,
-                'max_attachment_files': self.max_attachment_files,
-                'max_description_chars': self.max_description_chars,
-                'max_attachment_chars': self.max_attachment_chars,
-                'model_id_desc': self.model_id_desc,
-                'model_id_match': self.model_id_match
-            })
+            logger.info("Debug mode enabled", 
+                       process_delay_seconds=self.process_delay_seconds,
+                       match_threshold=self.match_threshold,
+                       max_attachment_files=self.max_attachment_files,
+                       max_description_chars=self.max_description_chars,
+                       max_attachment_chars=self.max_attachment_chars,
+                       model_id_desc=self.model_id_desc,
+                       model_id_match=self.model_id_match)
     
     def process_opportunity_message(self, s3_message: S3EventMessage) -> Dict[str, Any]:
         """
@@ -65,65 +68,110 @@ class OpportunityMatchProcessor:
         Returns:
             Processing result dictionary
         """
-        start_time = datetime.now()
-        
-        try:
-            if self.debug_mode:
-                logger.info(f"Processing opportunity from {s3_message.bucket_name}/{s3_message.object_key}")
-            
-            # Apply processing delay for rate limiting
-            if self.process_delay_seconds > 0:
-                if self.debug_mode:
-                    logger.info(f"Applying processing delay: {self.process_delay_seconds} seconds")
-                time.sleep(self.process_delay_seconds)
-            
-            # Download and parse opportunity JSON
-            opportunity_data = self._download_opportunity_data(s3_message)
-            
-            # Download and process attachments (if any)
-            attachments = self._download_attachments(opportunity_data, s3_message)
-            
-            # Extract opportunity information using Bedrock
-            opportunity_info = self._extract_opportunity_info(opportunity_data, attachments)
-            
-            # Calculate company match using Bedrock and knowledge base
-            match_result = self._calculate_company_match(opportunity_info, opportunity_data)
-            
-            # Store results and generate run summary
-            self._store_match_results(match_result, opportunity_data, s3_message)
-            
-            processing_time = (datetime.now() - start_time).total_seconds()
-            
-            if self.debug_mode:
-                logger.info(f"Successfully processed opportunity in {processing_time:.2f} seconds", extra={
-                    'opportunity_id': opportunity_data.get('opportunity_id'),
-                    'match_score': match_result.get('match_score'),
-                    'is_match': match_result.get('is_match')
-                })
-            
-            return {
-                'success': True,
-                'opportunity_id': opportunity_data.get('opportunity_id'),
-                'match_score': match_result.get('match_score'),
-                'processing_time_seconds': processing_time
-            }
-            
-        except Exception as e:
-            processing_time = (datetime.now() - start_time).total_seconds()
-            error_msg = f"Failed to process opportunity: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            
-            # Store error result
+        with PerformanceTimer(logger, "opportunity_processing") as timer:
             try:
-                self._store_error_result(s3_message, error_msg)
-            except Exception as store_error:
-                logger.error(f"Failed to store error result: {str(store_error)}")
-            
-            return {
-                'success': False,
-                'error': error_msg,
-                'processing_time_seconds': processing_time
-            }
+                with TracingContext("opportunity_processing", "AI-RFP-Agent"):
+                    opportunity_id = s3_message.object_key.split('/')[-2] if '/' in s3_message.object_key else 'unknown'
+                    
+                    logger.info("OPPORTUNITY_PROCESSED", 
+                               bucket=s3_message.bucket_name,
+                               object_key=s3_message.object_key,
+                               opportunity_id=opportunity_id)
+                    
+                    add_trace_annotation('opportunity_id', opportunity_id)
+                    add_trace_annotation('processing_stage', 'start')
+                    
+                    # Apply processing delay for rate limiting
+                    if self.process_delay_seconds > 0:
+                        logger.debug("Applying processing delay", 
+                                   delay_seconds=self.process_delay_seconds)
+                        time.sleep(self.process_delay_seconds)
+                    
+                    # Download and parse opportunity JSON
+                    with TracingContext("download_opportunity_data"):
+                        opportunity_data = self._download_opportunity_data(s3_message)
+                    
+                    # Download and process attachments (if any)
+                    with TracingContext("download_attachments"):
+                        attachments = self._download_attachments(opportunity_data, s3_message)
+                    
+                    # Extract opportunity information using Bedrock
+                    with TracingContext("extract_opportunity_info", "Bedrock"):
+                        opportunity_info = self._extract_opportunity_info(opportunity_data, attachments)
+                    
+                    # Calculate company match using Bedrock and knowledge base
+                    with TracingContext("calculate_company_match", "Bedrock"):
+                        match_result = self._calculate_company_match(opportunity_info, opportunity_data)
+                    
+                    # Store results and generate run summary
+                    with TracingContext("store_results", "S3"):
+                        self._store_match_results(match_result, opportunity_data, s3_message)
+                    
+                    # Record business metrics
+                    self.business_metrics.record_opportunity_processed(success=True)
+                    self.business_metrics.record_match_result(
+                        is_match=match_result.get('is_match', False),
+                        score=match_result.get('match_score', 0.0)
+                    )
+                    
+                    processing_time = timer.start_time and (datetime.utcnow() - timer.start_time).total_seconds()
+                    
+                    logger.info("Opportunity processing completed successfully",
+                               opportunity_id=opportunity_data.get('opportunity_id'),
+                               match_score=match_result.get('match_score'),
+                               is_match=match_result.get('is_match'),
+                               processing_time_seconds=processing_time)
+                    
+                    # Log business events
+                    if match_result.get('is_match', False):
+                        logger.business_event("MATCH_FOUND", 
+                                            opportunity_id=opportunity_id,
+                                            match_score=match_result.get('match_score'))
+                    else:
+                        logger.business_event("NO_MATCH_FOUND", 
+                                            opportunity_id=opportunity_id,
+                                            match_score=match_result.get('match_score'))
+                    
+                    add_trace_annotation('processing_stage', 'complete')
+                    add_trace_annotation('match_score', match_result.get('match_score', 0.0))
+                    add_trace_annotation('is_match', match_result.get('is_match', False))
+                    
+                    return {
+                        'success': True,
+                        'opportunity_id': opportunity_data.get('opportunity_id'),
+                        'match_score': match_result.get('match_score'),
+                        'processing_time_seconds': processing_time
+                    }
+                    
+            except Exception as e:
+                processing_time = timer.start_time and (datetime.utcnow() - timer.start_time).total_seconds()
+                error_msg = f"Failed to process opportunity: {str(e)}"
+                
+                logger.error("OPPORTUNITY_PROCESSING_FAILED", 
+                           error=str(e),
+                           error_type=type(e).__name__,
+                           bucket=s3_message.bucket_name,
+                           object_key=s3_message.object_key,
+                           processing_time_seconds=processing_time)
+                
+                # Record business metrics
+                self.business_metrics.record_opportunity_processed(success=False)
+                
+                # Store error result
+                try:
+                    self._store_error_result(s3_message, error_msg)
+                except Exception as store_error:
+                    logger.error("Failed to store error result", 
+                               store_error=str(store_error))
+                
+                add_trace_annotation('processing_stage', 'error')
+                add_trace_annotation('error_type', type(e).__name__)
+                
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'processing_time_seconds': processing_time
+                }
     
     def _download_opportunity_data(self, s3_message: S3EventMessage) -> Dict[str, Any]:
         """Download and parse opportunity JSON from S3."""
@@ -257,23 +305,37 @@ class OpportunityMatchProcessor:
     def _extract_opportunity_info(self, opportunity_data: Dict[str, Any], attachments: list) -> str:
         """Extract opportunity information using Bedrock LLM."""
         try:
-            if self.debug_mode:
-                logger.info(f"Extracting opportunity info using model: {self.model_id_desc}")
+            logger.info("Extracting opportunity info using Bedrock",
+                       model_id=self.model_id_desc,
+                       attachments_count=len(attachments))
             
-            # Use the bedrock_utils method for opportunity info extraction
-            opportunity_info = self.bedrock_client.extract_opportunity_info(
-                opportunity_data=opportunity_data,
-                attachments=attachments
-            )
+            with PerformanceTimer(logger, "bedrock_extract_opportunity_info"):
+                # Use the bedrock_utils method for opportunity info extraction
+                opportunity_info = self.bedrock_client.extract_opportunity_info(
+                    opportunity_data=opportunity_data,
+                    attachments=attachments
+                )
             
-            if self.debug_mode:
-                logger.info(f"Extracted opportunity info: {len(opportunity_info)} characters")
+            # Record successful Bedrock call
+            self.business_metrics.record_bedrock_call(success=True, model_id=self.model_id_desc)
+            logger.api_call("Bedrock", "extract_opportunity_info", success=True)
+            
+            logger.info("Successfully extracted opportunity info",
+                       info_length=len(opportunity_info))
             
             return opportunity_info
             
         except Exception as e:
             error_msg = f"Failed to extract opportunity information: {str(e)}"
-            logger.error(error_msg)
+            
+            # Record failed Bedrock call
+            self.business_metrics.record_bedrock_call(success=False, model_id=self.model_id_desc)
+            logger.api_call("Bedrock", "extract_opportunity_info", success=False, error=str(e))
+            
+            logger.error("BEDROCK_CALL_FAILED", 
+                        operation="extract_opportunity_info",
+                        model_id=self.model_id_desc,
+                        error=str(e))
             
             # Return a fallback summary based on available data
             title = opportunity_data.get('title', 'Unknown Title')
@@ -300,15 +362,20 @@ This is a fallback summary due to AI processing failure. Manual review recommend
     def _calculate_company_match(self, opportunity_info: str, opportunity_data: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate company match using Bedrock and knowledge base."""
         try:
-            if self.debug_mode:
-                logger.info(f"Calculating company match using model: {self.model_id_match}")
-                logger.info(f"Match threshold: {self.match_threshold}")
+            logger.info("Calculating company match using Bedrock",
+                       model_id=self.model_id_match,
+                       match_threshold=self.match_threshold)
             
-            # Use the bedrock_utils method for company matching
-            match_result = self.bedrock_client.calculate_company_match(
-                opportunity_info=opportunity_info,
-                opportunity_data=opportunity_data
-            )
+            with PerformanceTimer(logger, "bedrock_calculate_company_match"):
+                # Use the bedrock_utils method for company matching
+                match_result = self.bedrock_client.calculate_company_match(
+                    opportunity_info=opportunity_info,
+                    opportunity_data=opportunity_data
+                )
+            
+            # Record successful Bedrock call
+            self.business_metrics.record_bedrock_call(success=True, model_id=self.model_id_match)
+            logger.api_call("Bedrock", "calculate_company_match", success=True)
             
             # Ensure match_result has all required fields with defaults
             required_fields = {
@@ -343,20 +410,31 @@ This is a fallback summary due to AI processing failure. Manual review recommend
             match_result['solicitation_id'] = opportunity_data.get('solicitation_number', opportunity_data.get('opportunity_id', 'unknown'))
             match_result['match_threshold'] = self.match_threshold
             
-            if self.debug_mode:
-                logger.info(f"Company match calculated", extra={
-                    'match_score': match_result['match_score'],
-                    'is_match': match_result['is_match'],
-                    'citations_count': len(match_result.get('citations', [])),
-                    'opportunity_skills_count': len(match_result.get('opportunity_required_skills', [])),
-                    'company_skills_count': len(match_result.get('company_skills', []))
-                })
+            logger.info("Company match calculated successfully",
+                       match_score=match_result['match_score'],
+                       is_match=match_result['is_match'],
+                       citations_count=len(match_result.get('citations', [])),
+                       opportunity_skills_count=len(match_result.get('opportunity_required_skills', [])),
+                       company_skills_count=len(match_result.get('company_skills', [])))
+            
+            # Log match score as a business event
+            logger.business_event("MATCH_SCORE", 
+                                score=match_result['match_score'],
+                                is_match=match_result['is_match'])
             
             return match_result
             
         except Exception as e:
             error_msg = f"Failed to calculate company match: {str(e)}"
-            logger.error(error_msg)
+            
+            # Record failed Bedrock call
+            self.business_metrics.record_bedrock_call(success=False, model_id=self.model_id_match)
+            logger.api_call("Bedrock", "calculate_company_match", success=False, error=str(e))
+            
+            logger.error("BEDROCK_CALL_FAILED",
+                        operation="calculate_company_match", 
+                        model_id=self.model_id_match,
+                        error=str(e))
             
             # Return a fallback match result
             fallback_result = {
@@ -542,6 +620,7 @@ def process_single_message(s3_message: S3EventMessage) -> Any:
 # Create SQS batch processor
 sqs_processor = create_sqs_processor(process_single_message)
 
+@trace_lambda_handler("sam_sqs_generate_match_reports")
 @handle_lambda_error
 def lambda_handler(event, context):
     """
@@ -554,29 +633,74 @@ def lambda_handler(event, context):
     Returns:
         dict: Response with processing results
     """
-    logger.info("Starting AI opportunity matching Lambda", extra={
-        'function_name': context.function_name,
-        'request_id': context.aws_request_id,
-        'remaining_time_ms': context.get_remaining_time_in_millis(),
-        'debug_mode': config.get_debug_mode()
-    })
+    # Initialize logger with Lambda context for better tracing
+    logger = get_logger(__name__, context=context)
+    business_metrics = get_business_metrics()
+    
+    logger.info("Starting AI opportunity matching Lambda",
+               function_name=context.function_name,
+               request_id=context.aws_request_id,
+               remaining_time_ms=context.get_remaining_time_in_millis(),
+               debug_mode=config.get_debug_mode())
+    
+    # Add X-Ray annotations for filtering
+    add_trace_annotation('function_name', 'sam-sqs-generate-match-reports')
+    add_trace_annotation('environment', config.get_environment())
+    add_trace_annotation('debug_mode', config.get_debug_mode())
     
     try:
-        # Validate SQS event structure
-        SQSMessageValidator.validate_lambda_sqs_event(event)
+        with TracingContext("sqs_event_validation"):
+            # Validate SQS event structure
+            SQSMessageValidator.validate_lambda_sqs_event(event)
+            
+            # Log SQS batch information
+            records_count = len(event.get('Records', []))
+            logger.info("Processing SQS batch", 
+                       records_count=records_count)
+            
+            add_trace_annotation('sqs_records_count', records_count)
         
-        # Process the SQS batch
-        result = sqs_processor.process_lambda_event(event, context)
+        with TracingContext("sqs_batch_processing"):
+            # Process the SQS batch
+            result = sqs_processor.process_lambda_event(event, context)
         
-        logger.info("AI opportunity matching completed", extra={
-            'total_messages': result.get('totalMessages'),
-            'successful_messages': result.get('successfulMessages'),
-            'failed_messages': result.get('failedMessages'),
-            'correlation_id': logger.correlation_id
-        })
+        # Record processing rate metric
+        total_messages = result.get('totalMessages', 0)
+        processing_time = context.get_remaining_time_in_millis() / 1000.0  # Convert to seconds
+        if processing_time > 0:
+            rate = total_messages / (processing_time / 60.0)  # opportunities per minute
+            business_metrics.record_processing_rate(rate)
+        
+        logger.info("AI opportunity matching completed",
+                   total_messages=result.get('totalMessages'),
+                   successful_messages=result.get('successfulMessages'),
+                   failed_messages=result.get('failedMessages'),
+                   correlation_id=logger.correlation_id,
+                   trace_id=logger.trace_id)
+        
+        # Log business event
+        logger.business_event("BATCH_PROCESSING_COMPLETED",
+                            total_messages=result.get('totalMessages'),
+                            successful_messages=result.get('successfulMessages'),
+                            failed_messages=result.get('failedMessages'))
+        
+        add_trace_annotation('batch_success', True)
+        add_trace_annotation('total_messages', result.get('totalMessages', 0))
+        add_trace_annotation('successful_messages', result.get('successfulMessages', 0))
         
         return result
         
     except Exception as e:
-        logger.error(f"Lambda handler error: {str(e)}", exc_info=True)
+        logger.error("Lambda handler error", 
+                    error=str(e),
+                    error_type=type(e).__name__)
+        
+        # Log business event for failure
+        logger.business_event("BATCH_PROCESSING_FAILED",
+                            error=str(e),
+                            error_type=type(e).__name__)
+        
+        add_trace_annotation('batch_success', False)
+        add_trace_annotation('error_type', type(e).__name__)
+        
         raise

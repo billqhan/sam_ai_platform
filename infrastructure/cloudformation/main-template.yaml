@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AI-powered RFP Response Agent - Main Infrastructure Template'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    AllowedValues: ['dev', 'staging', 'prod']
+    Description: 'Environment name for resource naming'
+  
+  SamApiKey:
+    Type: String
+    NoEcho: true
+    Description: 'API key for SAM.gov access'
+  
+  CompanyName:
+    Type: String
+    Default: 'Your Company Name'
+    Description: 'Company name for report templates'
+  
+  CompanyContact:
+    Type: String
+    Default: 'contact@yourcompany.com'
+    Description: 'Company contact information'
+
+Resources:
+  # S3 Buckets
+  SamDataInBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'sam-data-in-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteAfter30Days
+            Status: Enabled
+            ExpirationInDays: 30
+      # NotificationConfiguration will be set up via separate template
+      # to avoid circular dependencies
+
+  SamExtractedJsonResourcesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'sam-extracted-json-resources-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: MoveToIAAfter30Days
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+          - Id: DeleteAfter90Days
+            Status: Enabled
+            ExpirationInDays: 90
+      # NotificationConfiguration will be set up via separate template
+      # to avoid circular dependencies
+
+  SamMatchingOutSqsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'sam-matching-out-sqs-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      # NotificationConfiguration will be set up via separate template
+      # to avoid circular dependencies
+
+  SamMatchingOutRunsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'sam-matching-out-runs-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      # NotificationConfiguration will be set up via separate template
+      # to avoid circular dependencies
+
+  SamOpportunityResponsesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'sam-opportunity-responses-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  SamWebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'sam-website-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+
+  SamCompanyInfoBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'sam-company-info-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  SamDownloadFilesLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'sam-download-files-logs-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteAfter90Days
+            Status: Enabled
+            ExpirationInDays: 90
+
+  # SQS Queue with Dead Letter Queue
+  SqsSamJsonMessagesDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'sqs-sam-json-messages-dlq-${Environment}'
+      MessageRetentionPeriod: 1209600  # 14 days
+      KmsMasterKeyId: alias/aws/sqs
+
+  SqsSamJsonMessagesQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'sqs-sam-json-messages-${Environment}'
+      VisibilityTimeoutSeconds: 300  # 5 minutes
+      MessageRetentionPeriod: 1209600  # 14 days
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SqsSamJsonMessagesDeadLetterQueue.Arn
+        maxReceiveCount: 3
+      KmsMasterKeyId: alias/aws/sqs
+
+Outputs:
+  SamDataInBucketName:
+    Description: 'Name of the SAM data input bucket'
+    Value: !Ref SamDataInBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-SamDataInBucket'
+  
+  SamExtractedJsonResourcesBucketName:
+    Description: 'Name of the extracted JSON resources bucket'
+    Value: !Ref SamExtractedJsonResourcesBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-SamExtractedJsonResourcesBucket'
+  
+  SqsSamJsonMessagesQueueUrl:
+    Description: 'URL of the SQS queue for JSON messages'
+    Value: !Ref SqsSamJsonMessagesQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-SqsSamJsonMessagesQueue'
+  
+  SqsSamJsonMessagesQueueArn:
+    Description: 'ARN of the SQS queue for JSON messages'
+    Value: !GetAtt SqsSamJsonMessagesQueue.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SqsSamJsonMessagesQueueArn'

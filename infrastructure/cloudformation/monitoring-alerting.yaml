@@ -1,0 +1,598 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AI-powered RFP Response Agent - Monitoring and Alerting Template'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    Description: 'Environment name for resource naming'
+  
+  AlertEmail:
+    Type: String
+    Default: 'alerts@yourcompany.com'
+    Description: 'Email address for alerts'
+
+Resources:
+  # SNS Topic for Alerts
+  SamAlertsSnsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'sam-alerts-${Environment}'
+      DisplayName: !Sub 'AI RFP Response Agent Alerts - ${Environment}'
+
+  SamAlertsEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref SamAlertsSnsTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # CloudWatch Log Groups with Retention
+  SamGovDailyDownloadLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/sam-gov-daily-download-${Environment}'
+      RetentionInDays: 30
+
+  SamJsonProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/sam-json-processor-${Environment}'
+      RetentionInDays: 30
+
+  SamSqsGenerateMatchReportsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/sam-sqs-generate-match-reports-${Environment}'
+      RetentionInDays: 30
+
+  SamProduceUserReportLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/sam-produce-user-report-${Environment}'
+      RetentionInDays: 30
+
+  SamMergeAndArchiveResultLogsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/sam-merge-and-archive-result-logs-${Environment}'
+      RetentionInDays: 30
+
+  SamProduceWebReportsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/sam-produce-web-reports-${Environment}'
+      RetentionInDays: 30
+
+  # CloudWatch Alarms for Lambda Functions
+  SamGovDailyDownloadErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'sam-gov-daily-download-errors-${Environment}'
+      AlarmDescription: 'Alert when SAM.gov daily download function has errors'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub 'sam-gov-daily-download-${Environment}'
+      AlarmActions:
+        - !Ref SamAlertsSnsTopic
+
+  SamGovDailyDownloadDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'sam-gov-daily-download-duration-${Environment}'
+      AlarmDescription: 'Alert when SAM.gov daily download function takes too long'
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 600000  # 10 minutes in milliseconds
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub 'sam-gov-daily-download-${Environment}'
+      AlarmActions:
+        - !Ref SamAlertsSnsTopic
+
+  SamJsonProcessorErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'sam-json-processor-errors-${Environment}'
+      AlarmDescription: 'Alert when JSON processor function has high error rate'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub 'sam-json-processor-${Environment}'
+      AlarmActions:
+        - !Ref SamAlertsSnsTopic
+
+  SamSqsGenerateMatchReportsErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'sam-sqs-generate-match-reports-errors-${Environment}'
+      AlarmDescription: 'Alert when match reports function has high error rate'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub 'sam-sqs-generate-match-reports-${Environment}'
+      AlarmActions:
+        - !Ref SamAlertsSnsTopic
+
+  # SQS Queue Alarms
+  SqsDeadLetterQueueAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'sqs-dead-letter-queue-messages-${Environment}'
+      AlarmDescription: 'Alert when messages appear in dead letter queue'
+      MetricName: ApproximateNumberOfVisibleMessages
+      Namespace: AWS/SQS
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !Sub 'sqs-sam-json-messages-dlq-${Environment}'
+      AlarmActions:
+        - !Ref SamAlertsSnsTopic
+
+  SqsQueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'sqs-queue-depth-high-${Environment}'
+      AlarmDescription: 'Alert when SQS queue depth is too high'
+      MetricName: ApproximateNumberOfVisibleMessages
+      Namespace: AWS/SQS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 100
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !Sub 'sqs-sam-json-messages-${Environment}'
+      AlarmActions:
+        - !Ref SamAlertsSnsTopic
+
+  # Custom Metrics Dashboard
+  SamProcessingDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub 'AI-RFP-Response-Agent-${Environment}'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/Lambda", "Invocations", "FunctionName", "sam-gov-daily-download-${Environment}" ],
+                  [ ".", "Errors", ".", "." ],
+                  [ ".", "Duration", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "SAM.gov Daily Download Function",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8,
+              "y": 0,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AI-RFP-Response-Agent", "SuccessfulApiCalls" ],
+                  [ ".", "FailedApiCalls" ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "API Call Success/Failure Rate",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16,
+              "y": 0,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AI-RFP-Response-Agent", "OpportunitiesProcessed" ],
+                  [ ".", "OpportunityProcessingErrors" ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Opportunity Processing Rate",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AI-RFP-Response-Agent", "MatchesFound" ],
+                  [ ".", "NoMatchesFound" ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Match Results",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AI-RFP-Response-Agent", "MatchScore" ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Match Score Distribution",
+                "period": 300,
+                "stat": "Average"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 12,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AI-RFP-Response-Agent", "BedrockCallsSuccess" ],
+                  [ ".", "BedrockCallsError" ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Bedrock API Calls",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 12,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/SQS", "ApproximateNumberOfVisibleMessages", "QueueName", "sqs-sam-json-messages-${Environment}" ],
+                  [ ".", "NumberOfMessagesSent", ".", "." ],
+                  [ ".", "NumberOfMessagesReceived", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "SQS Queue Metrics",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 18,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AI-RFP-Response-Agent", "ProcessingRate" ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Overall Processing Rate (opportunities/minute)",
+                "period": 900,
+                "stat": "Average"
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 24,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/sam-gov-daily-download-${Environment}' | fields @timestamp, correlation_id, message\n| filter level = \"ERROR\"\n| sort @timestamp desc\n| limit 20",
+                "region": "${AWS::Region}",
+                "title": "Recent Errors - Daily Download",
+                "view": "table"
+              }
+            },
+            {
+              "type": "log",
+              "x": 12,
+              "y": 24,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/sam-sqs-generate-match-reports-${Environment}' | fields @timestamp, correlation_id, message, context.match_score\n| filter level = \"ERROR\"\n| sort @timestamp desc\n| limit 20",
+                "region": "${AWS::Region}",
+                "title": "Recent Errors - Match Reports",
+                "view": "table"
+              }
+            }
+          ]
+        }
+
+  # Custom Metrics Alarms
+  SamApiCallFailureRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'sam-api-call-failure-rate-${Environment}'
+      AlarmDescription: 'Alert when API call failure rate is high'
+      MetricName: FailedApiCalls
+      Namespace: AI-RFP-Response-Agent
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref SamAlertsSnsTopic
+
+  SamOpportunityProcessingFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'sam-opportunity-processing-failure-${Environment}'
+      AlarmDescription: 'Alert when opportunity processing failure rate is high'
+      MetricName: OpportunityProcessingErrors
+      Namespace: AI-RFP-Response-Agent
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref SamAlertsSnsTopic
+
+  SamLowMatchRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'sam-low-match-rate-${Environment}'
+      AlarmDescription: 'Alert when match rate is unusually low'
+      MetricName: MatchesFound
+      Namespace: AI-RFP-Response-Agent
+      Statistic: Sum
+      Period: 3600  # 1 hour
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref SamAlertsSnsTopic
+
+  SamBedrockErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'sam-bedrock-error-rate-${Environment}'
+      AlarmDescription: 'Alert when Bedrock API error rate is high'
+      MetricName: BedrockCallsError
+      Namespace: AI-RFP-Response-Agent
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref SamAlertsSnsTopic
+
+  SamProcessingRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'sam-low-processing-rate-${Environment}'
+      AlarmDescription: 'Alert when processing rate drops significantly'
+      MetricName: ProcessingRate
+      Namespace: AI-RFP-Response-Agent
+      Statistic: Average
+      Period: 900  # 15 minutes
+      EvaluationPeriods: 2
+      Threshold: 0.5  # opportunities per minute
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref SamAlertsSnsTopic
+
+  # Cost Monitoring Alarm
+  SamCostAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'sam-monthly-cost-${Environment}'
+      AlarmDescription: 'Alert when monthly costs exceed threshold'
+      MetricName: EstimatedCharges
+      Namespace: AWS/Billing
+      Statistic: Maximum
+      Period: 86400  # 24 hours
+      EvaluationPeriods: 1
+      Threshold: 100  # $100 USD
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: Currency
+          Value: USD
+      AlarmActions:
+        - !Ref SamAlertsSnsTopic
+
+  # Resource Utilization Alarms
+  SamHighMemoryUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'sam-high-memory-usage-${Environment}'
+      AlarmDescription: 'Alert when Lambda memory usage is consistently high'
+      MetricName: MemoryUtilization
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 85  # 85% memory usage
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub 'sam-sqs-generate-match-reports-${Environment}'
+      AlarmActions:
+        - !Ref SamAlertsSnsTopic
+
+  # Log Metric Filters for Custom Metrics
+  SamApiCallsMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref SamGovDailyDownloadLogGroup
+      FilterPattern: '[timestamp, requestId, level="INFO", message="API_CALL_SUCCESS"]'
+      MetricTransformations:
+        - MetricNamespace: 'AI-RFP-Response-Agent'
+          MetricName: 'SuccessfulApiCalls'
+          MetricValue: '1'
+          DefaultValue: 0
+
+  SamApiCallsErrorMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref SamGovDailyDownloadLogGroup
+      FilterPattern: '[timestamp, requestId, level="ERROR", message="API_CALL_FAILED"]'
+      MetricTransformations:
+        - MetricNamespace: 'AI-RFP-Response-Agent'
+          MetricName: 'FailedApiCalls'
+          MetricValue: '1'
+          DefaultValue: 0
+
+  SamOpportunityProcessedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref SamJsonProcessorLogGroup
+      FilterPattern: '[timestamp, requestId, level="INFO", message="OPPORTUNITY_PROCESSED"]'
+      MetricTransformations:
+        - MetricNamespace: 'AI-RFP-Response-Agent'
+          MetricName: 'OpportunitiesProcessed'
+          MetricValue: '1'
+          DefaultValue: 0
+
+  SamOpportunityProcessingErrorMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref SamJsonProcessorLogGroup
+      FilterPattern: '[timestamp, requestId, level="ERROR", message="OPPORTUNITY_PROCESSING_FAILED"]'
+      MetricTransformations:
+        - MetricNamespace: 'AI-RFP-Response-Agent'
+          MetricName: 'OpportunityProcessingErrors'
+          MetricValue: '1'
+          DefaultValue: 0
+
+  SamMatchFoundMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref SamSqsGenerateMatchReportsLogGroup
+      FilterPattern: '[timestamp, requestId, level="INFO", message="MATCH_FOUND", score]'
+      MetricTransformations:
+        - MetricNamespace: 'AI-RFP-Response-Agent'
+          MetricName: 'MatchesFound'
+          MetricValue: '1'
+          DefaultValue: 0
+
+  SamMatchScoreMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref SamSqsGenerateMatchReportsLogGroup
+      FilterPattern: '[timestamp, requestId, level="INFO", message="MATCH_SCORE", score]'
+      MetricTransformations:
+        - MetricNamespace: 'AI-RFP-Response-Agent'
+          MetricName: 'MatchScore'
+          MetricValue: '$score'
+          DefaultValue: 0
+
+  SamNoMatchFoundMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref SamSqsGenerateMatchReportsLogGroup
+      FilterPattern: '[timestamp, requestId, level="INFO", message="NO_MATCH_FOUND"]'
+      MetricTransformations:
+        - MetricNamespace: 'AI-RFP-Response-Agent'
+          MetricName: 'NoMatchesFound'
+          MetricValue: '1'
+          DefaultValue: 0
+
+  SamBedrockCallsMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref SamSqsGenerateMatchReportsLogGroup
+      FilterPattern: '[timestamp, requestId, level="INFO", message="BEDROCK_CALL_SUCCESS"]'
+      MetricTransformations:
+        - MetricNamespace: 'AI-RFP-Response-Agent'
+          MetricName: 'BedrockCallsSuccess'
+          MetricValue: '1'
+          DefaultValue: 0
+
+  SamBedrockErrorsMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref SamSqsGenerateMatchReportsLogGroup
+      FilterPattern: '[timestamp, requestId, level="ERROR", message="BEDROCK_CALL_FAILED"]'
+      MetricTransformations:
+        - MetricNamespace: 'AI-RFP-Response-Agent'
+          MetricName: 'BedrockCallsError'
+          MetricValue: '1'
+          DefaultValue: 0
+
+  SamProcessingRateMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref SamSqsGenerateMatchReportsLogGroup
+      FilterPattern: '[timestamp, requestId, level="INFO", message="PROCESSING_RATE", rate]'
+      MetricTransformations:
+        - MetricNamespace: 'AI-RFP-Response-Agent'
+          MetricName: 'ProcessingRate'
+          MetricValue: '$rate'
+          DefaultValue: 0
+
+Outputs:
+  SamAlertsTopicArn:
+    Description: 'ARN of the SNS topic for alerts'
+    Value: !Ref SamAlertsSnsTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-SamAlertsTopic'
+  
+  SamProcessingDashboardUrl:
+    Description: 'URL of the CloudWatch dashboard'
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${SamProcessingDashboard}'
+    Export:
+      Name: !Sub '${AWS::StackName}-SamProcessingDashboard'

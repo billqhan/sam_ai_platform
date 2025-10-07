@@ -1,0 +1,26 @@
+[
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "prod"
+  },
+  {
+    "ParameterKey": "SamApiKey",
+    "ParameterValue": "YOUR_SAM_API_KEY_HERE"
+  },
+  {
+    "ParameterKey": "CompanyName",
+    "ParameterValue": "Your Company Name"
+  },
+  {
+    "ParameterKey": "CompanyContact",
+    "ParameterValue": "contact@yourcompany.com"
+  },
+  {
+    "ParameterKey": "TemplatesBucketName",
+    "ParameterValue": "your-cloudformation-templates-bucket"
+  },
+  {
+    "ParameterKey": "TemplatesBucketPrefix",
+    "ParameterValue": "ai-rfp-response-agent/"
+  }
+]

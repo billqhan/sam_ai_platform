@@ -1,0 +1,426 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AI-powered RFP Response Agent - Lambda Functions Template'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    Description: 'Environment name for resource naming'
+  
+  SamApiKey:
+    Type: String
+    NoEcho: true
+    Description: 'API key for SAM.gov access'
+  
+  CompanyName:
+    Type: String
+    Default: 'Your Company Name'
+    Description: 'Company name for report templates'
+  
+  CompanyContact:
+    Type: String
+    Default: 'contact@yourcompany.com'
+    Description: 'Company contact information'
+  
+  SqsSamJsonMessagesQueueArn:
+    Type: String
+    Description: 'ARN of the SQS queue for JSON messages'
+
+Resources:
+  # Lambda Execution Roles
+  SamGovDailyDownloadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'SamGovDailyDownloadRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                Resource:
+                  - !Sub 'arn:aws:s3:::sam-data-in-${Environment}/*'
+                  - !Sub 'arn:aws:s3:::sam-download-files-logs-${Environment}/*'
+        - PolicyName: CloudWatchMetrics
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+
+  SamJsonProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'SamJsonProcessorRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::sam-data-in-${Environment}/*'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                Resource: !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}/*'
+        - PolicyName: CloudWatchMetrics
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+
+  SamSqsGenerateMatchReportsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'SamSqsGenerateMatchReportsRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+      Policies:
+        - PolicyName: SQSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !Ref SqsSamJsonMessagesQueueArn
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}/*'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                Resource:
+                  - !Sub 'arn:aws:s3:::sam-matching-out-sqs-${Environment}/*'
+                  - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}/*'
+        - PolicyName: BedrockAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:Retrieve
+                Resource: '*'
+        - PolicyName: CloudWatchMetrics
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+
+  SamProduceUserReportRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'SamProduceUserReportRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::sam-matching-out-sqs-${Environment}/*'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                Resource: !Sub 'arn:aws:s3:::sam-opportunity-responses-${Environment}/*'
+
+  SamMergeAndArchiveResultLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'SamMergeAndArchiveResultLogsRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}'
+                  - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}/*'
+
+  SamProduceWebReportsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'SamProduceWebReportsRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}'
+                  - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}/*'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                Resource: !Sub 'arn:aws:s3:::sam-website-${Environment}/*'
+
+  # Lambda Functions
+  SamGovDailyDownloadFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'sam-gov-daily-download-${Environment}'
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt SamGovDailyDownloadRole.Arn
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Function placeholder'}
+      MemorySize: 512
+      Timeout: 900  # 15 minutes
+      TracingConfig:
+        Mode: Active
+      Environment:
+        Variables:
+          SAM_API_URL: 'https://api.sam.gov/prod/opportunities/v2/search'
+          SAM_API_KEY: !Ref SamApiKey
+          OUTPUT_BUCKET: !Sub 'sam-data-in-${Environment}'
+          LOG_BUCKET: !Sub 'sam-download-files-logs-${Environment}'
+          API_LIMIT: '1000'
+          OVERRIDE_DATE_FORMAT: 'MM/DD/YYYY'
+          OVERRIDE_POSTED_FROM: ''
+          OVERRIDE_POSTED_TO: ''
+          _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-gov-daily-download'
+
+  SamJsonProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'sam-json-processor-${Environment}'
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt SamJsonProcessorRole.Arn
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Function placeholder'}
+      MemorySize: 2048
+      Timeout: 600  # 10 minutes
+      EphemeralStorage:
+        Size: 1024
+      TracingConfig:
+        Mode: Active
+      Environment:
+        Variables:
+          OUTPUT_BUCKET: !Sub 'sam-extracted-json-resources-${Environment}'
+          MAX_CONCURRENT_DOWNLOADS: '10'
+          _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-json-processor'
+
+  SamSqsGenerateMatchReportsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'sam-sqs-generate-match-reports-${Environment}'
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt SamSqsGenerateMatchReportsRole.Arn
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Function placeholder'}
+      MemorySize: 2048
+      Timeout: 300  # 5 minutes
+      ReservedConcurrencyLimit: 10
+      TracingConfig:
+        Mode: Active
+      Environment:
+        Variables:
+          BEDROCK_REGION: 'us-east-1'
+          KNOWLEDGE_BASE_ID: 'placeholder-kb-id'
+          MATCH_THRESHOLD: '0.7'
+          OUTPUT_BUCKET_SQS: !Sub 'sam-matching-out-sqs-${Environment}'
+          OUTPUT_BUCKET_RUNS: !Sub 'sam-matching-out-runs-${Environment}'
+          MAX_ATTACHMENT_FILES: '4'
+          MAX_DESCRIPTION_CHARS: '20000'
+          MAX_ATTACHMENT_CHARS: '16000'
+          MODEL_ID_DESC: 'anthropic.claude-3-sonnet-20240229-v1:0'
+          MODEL_ID_MATCH: 'anthropic.claude-3-sonnet-20240229-v1:0'
+          DEBUG_MODE: 'true'
+          PROCESS_DELAY_SECONDS: '60'
+          _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-sqs-generate-match-reports'
+
+  SamProduceUserReportFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'sam-produce-user-report-${Environment}'
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt SamProduceUserReportRole.Arn
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Function placeholder'}
+      MemorySize: 1024
+      Timeout: 180  # 3 minutes
+      TracingConfig:
+        Mode: Active
+      Environment:
+        Variables:
+          OUTPUT_BUCKET: !Sub 'sam-opportunity-responses-${Environment}'
+          COMPANY_NAME: !Ref CompanyName
+          COMPANY_CONTACT: !Ref CompanyContact
+          _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-produce-user-report'
+
+  SamMergeAndArchiveResultLogsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'sam-merge-and-archive-result-logs-${Environment}'
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt SamMergeAndArchiveResultLogsRole.Arn
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Function placeholder'}
+      MemorySize: 128
+      Timeout: 300  # 5 minutes
+      EphemeralStorage:
+        Size: 512
+      TracingConfig:
+        Mode: Active
+      Environment:
+        Variables:
+          RUNS_BUCKET: !Sub 'sam-matching-out-runs-${Environment}'
+          ARCHIVE_FOLDER: 'archive'
+          _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-merge-and-archive-result-logs'
+
+  SamProduceWebReportsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'sam-produce-web-reports-${Environment}'
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt SamProduceWebReportsRole.Arn
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Function placeholder'}
+      MemorySize: 1024
+      Timeout: 300  # 5 minutes
+      TracingConfig:
+        Mode: Active
+      Environment:
+        Variables:
+          WEBSITE_BUCKET: !Sub 'sam-website-${Environment}'
+          DASHBOARD_PATH: 'dashboards/'
+          _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-produce-web-reports'
+
+  # Event Source Mappings
+  SqsEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !Ref SqsSamJsonMessagesQueueArn
+      FunctionName: !Ref SamSqsGenerateMatchReportsFunction
+      BatchSize: 1
+      MaximumBatchingWindowInSeconds: 0
+
+Outputs:
+  SamGovDailyDownloadFunctionArn:
+    Description: 'ARN of the SAM.gov daily download Lambda function'
+    Value: !GetAtt SamGovDailyDownloadFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamGovDailyDownloadFunction'
+  
+  SamJsonProcessorFunctionArn:
+    Description: 'ARN of the JSON processor Lambda function'
+    Value: !GetAtt SamJsonProcessorFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamJsonProcessorFunction'
+  
+  SamMergeAndArchiveResultLogsFunctionArn:
+    Description: 'ARN of the merge and archive Lambda function'
+    Value: !GetAtt SamMergeAndArchiveResultLogsFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamMergeAndArchiveResultLogsFunction'

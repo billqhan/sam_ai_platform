@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AI-powered RFP Response Agent - S3 Bucket Policies Template'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    Description: 'Environment name for resource naming'
+  
+  SqsSamJsonMessagesQueueArn:
+    Type: String
+    Description: 'ARN of the SQS queue for JSON messages'
+
+Resources:
+  # S3 Bucket Policy for Website Bucket (Public Read Access)
+  SamWebsiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Sub 'sam-website-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub 'arn:aws:s3:::sam-website-${Environment}/*'
+            Condition:
+              StringEquals:
+                's3:ExistingObjectTag/public': 'true'
+
+  # SQS Queue Policy for S3 Event Notifications
+  SqsSamJsonMessagesQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Sub 'https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/sqs-sam-json-messages-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowS3ToSendMessage
+            Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !Ref SqsSamJsonMessagesQueueArn
+            Condition:
+              ArnEquals:
+                'aws:SourceArn': !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}'
+
+  # Lambda Permissions for S3 Event Notifications
+  SamJsonProcessorS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Sub 'sam-json-processor-${Environment}'
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::sam-data-in-${Environment}'
+
+  SamProduceUserReportS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Sub 'sam-produce-user-report-${Environment}'
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::sam-matching-out-sqs-${Environment}'
+
+  SamProduceWebReportsS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Sub 'sam-produce-web-reports-${Environment}'
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}'
+
+Outputs:
+  SamWebsiteBucketPolicyId:
+    Description: 'ID of the website bucket policy'
+    Value: !Ref SamWebsiteBucketPolicy
+    Export:
+      Name: !Sub '${AWS::StackName}-SamWebsiteBucketPolicy'
+  
+  SqsSamJsonMessagesQueuePolicyId:
+    Description: 'ID of the SQS queue policy'
+    Value: !Ref SqsSamJsonMessagesQueuePolicy
+    Export:
+      Name: !Sub '${AWS::StackName}-SqsSamJsonMessagesQueuePolicy'

@@ -1,0 +1,195 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AI-powered RFP Response Agent - Master Template'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    AllowedValues: ['dev', 'staging', 'prod']
+    Description: 'Environment name for resource naming'
+  
+  SamApiKey:
+    Type: String
+    NoEcho: true
+    Description: 'API key for SAM.gov access'
+  
+  CompanyName:
+    Type: String
+    Default: 'Your Company Name'
+    Description: 'Company name for report templates'
+  
+  CompanyContact:
+    Type: String
+    Default: 'contact@yourcompany.com'
+    Description: 'Company contact information'
+  
+  TemplatesBucketName:
+    Type: String
+    Description: 'S3 bucket containing the nested CloudFormation templates'
+  
+  TemplatesBucketPrefix:
+    Type: String
+    Default: 'cloudformation/'
+    Description: 'Prefix for CloudFormation templates in the S3 bucket'
+
+Resources:
+  # Main Infrastructure Stack (S3 Buckets, SQS)
+  MainInfrastructureStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}main-template.yaml'
+      Parameters:
+        Environment: !Ref Environment
+        SamApiKey: !Ref SamApiKey
+        CompanyName: !Ref CompanyName
+        CompanyContact: !Ref CompanyContact
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: 'AI-RFP-Response-Agent'
+
+  # Lambda Functions Stack
+  LambdaFunctionsStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: MainInfrastructureStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}lambda-functions.yaml'
+      Parameters:
+        Environment: !Ref Environment
+        SamApiKey: !Ref SamApiKey
+        CompanyName: !Ref CompanyName
+        CompanyContact: !Ref CompanyContact
+        SqsSamJsonMessagesQueueArn: !GetAtt MainInfrastructureStack.Outputs.SqsSamJsonMessagesQueueArn
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: 'AI-RFP-Response-Agent'
+
+  # EventBridge Rules Stack
+  EventBridgeRulesStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: LambdaFunctionsStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}eventbridge-rules.yaml'
+      Parameters:
+        Environment: !Ref Environment
+        SamGovDailyDownloadFunctionArn: !GetAtt LambdaFunctionsStack.Outputs.SamGovDailyDownloadFunctionArn
+        SamMergeAndArchiveResultLogsFunctionArn: !GetAtt LambdaFunctionsStack.Outputs.SamMergeAndArchiveResultLogsFunctionArn
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: 'AI-RFP-Response-Agent'
+
+  # S3 Bucket Policies Stack
+  S3BucketPoliciesStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: LambdaFunctionsStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}s3-bucket-policies.yaml'
+      Parameters:
+        Environment: !Ref Environment
+        SqsSamJsonMessagesQueueArn: !GetAtt MainInfrastructureStack.Outputs.SqsSamJsonMessagesQueueArn
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: 'AI-RFP-Response-Agent'
+
+  # IAM Security Policies Stack
+  IAMSecurityPoliciesStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: LambdaFunctionsStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}iam-security-policies.yaml'
+      Parameters:
+        Environment: !Ref Environment
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: 'AI-RFP-Response-Agent'
+
+  # Monitoring and Alerting Stack
+  MonitoringAlertingStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: LambdaFunctionsStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}monitoring-alerting.yaml'
+      Parameters:
+        Environment: !Ref Environment
+        AlertEmail: !Ref CompanyContact
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: 'AI-RFP-Response-Agent'
+
+  # S3 Event Notifications Stack
+  S3EventNotificationsStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: 
+      - LambdaFunctionsStack
+      - S3BucketPoliciesStack
+      - IAMSecurityPoliciesStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}s3-event-notifications.yaml'
+      Parameters:
+        Environment: !Ref Environment
+        SqsSamJsonMessagesQueueArn: !GetAtt MainInfrastructureStack.Outputs.SqsSamJsonMessagesQueueArn
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: 'AI-RFP-Response-Agent'
+
+Outputs:
+  SamDataInBucketName:
+    Description: 'Name of the SAM data input bucket'
+    Value: !GetAtt MainInfrastructureStack.Outputs.SamDataInBucketName
+    Export:
+      Name: !Sub '${AWS::StackName}-SamDataInBucket'
+  
+  SamExtractedJsonResourcesBucketName:
+    Description: 'Name of the extracted JSON resources bucket'
+    Value: !GetAtt MainInfrastructureStack.Outputs.SamExtractedJsonResourcesBucketName
+    Export:
+      Name: !Sub '${AWS::StackName}-SamExtractedJsonResourcesBucket'
+  
+  SqsSamJsonMessagesQueueUrl:
+    Description: 'URL of the SQS queue for JSON messages'
+    Value: !GetAtt MainInfrastructureStack.Outputs.SqsSamJsonMessagesQueueUrl
+    Export:
+      Name: !Sub '${AWS::StackName}-SqsSamJsonMessagesQueue'
+  
+  SamGovDailyDownloadFunctionArn:
+    Description: 'ARN of the SAM.gov daily download Lambda function'
+    Value: !GetAtt LambdaFunctionsStack.Outputs.SamGovDailyDownloadFunctionArn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamGovDailyDownloadFunction'
+  
+  SamJsonProcessorFunctionArn:
+    Description: 'ARN of the JSON processor Lambda function'
+    Value: !GetAtt LambdaFunctionsStack.Outputs.SamJsonProcessorFunctionArn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamJsonProcessorFunction'
+  
+  SamProcessingKMSKeyArn:
+    Description: 'ARN of the KMS key for SAM processing encryption'
+    Value: !GetAtt IAMSecurityPoliciesStack.Outputs.SamProcessingKMSKeyArn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamProcessingKMSKey'
+  
+  SamAlertsTopicArn:
+    Description: 'ARN of the SNS topic for alerts'
+    Value: !GetAtt MonitoringAlertingStack.Outputs.SamAlertsTopicArn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamAlertsTopic'
+  
+  SamProcessingDashboardUrl:
+    Description: 'URL of the CloudWatch dashboard'
+    Value: !GetAtt MonitoringAlertingStack.Outputs.SamProcessingDashboardUrl
+    Export:
+      Name: !Sub '${AWS::StackName}-SamProcessingDashboard'

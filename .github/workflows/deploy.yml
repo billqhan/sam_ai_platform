@@ -1,0 +1,291 @@
+name: Deploy AI-powered RFP Response Agent
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      force_deploy:
+        description: 'Force deployment even if no changes detected'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  AWS_REGION: us-east-1
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  validate:
+    name: Validate Templates and Code
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install cfn-lint yamllint
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+      
+      - name: Validate CloudFormation templates
+        run: |
+          echo "Validating CloudFormation templates..."
+          for template in infrastructure/cloudformation/*.yaml; do
+            echo "Validating $template"
+            cfn-lint "$template"
+          done
+      
+      - name: Validate YAML files
+        run: |
+          echo "Validating YAML syntax..."
+          yamllint infrastructure/cloudformation/*.yaml || true
+      
+      - name: Validate Python syntax
+        run: |
+          echo "Validating Python syntax..."
+          find src/ -name "*.py" -exec python -m py_compile {} \; || true
+      
+      - name: Check shell scripts
+        run: |
+          echo "Checking shell scripts..."
+          find infrastructure/scripts/ -name "*.sh" -exec shellcheck {} \; || true
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: validate
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov moto boto3
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+      
+      - name: Run unit tests
+        run: |
+          echo "Running unit tests..."
+          # Add test commands here when tests are available
+          # pytest tests/ --cov=src/ --cov-report=xml
+          echo "No tests configured yet"
+      
+      - name: Upload coverage reports
+        if: false  # Enable when tests are available
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+
+  package:
+    name: Package Lambda Functions
+    runs-on: ubuntu-latest
+    needs: [validate, test]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Package Lambda functions
+        run: |
+          chmod +x infrastructure/scripts/package-lambdas.sh
+          ./infrastructure/scripts/package-lambdas.sh -c
+      
+      - name: Upload Lambda packages
+        uses: actions/upload-artifact@v3
+        with:
+          name: lambda-packages
+          path: build/*.zip
+          retention-days: 30
+
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: package
+    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+    environment: development
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Deploy to development
+        run: |
+          chmod +x infrastructure/scripts/deploy.sh
+          ./infrastructure/scripts/deploy.sh \
+            -e dev \
+            -b ${{ secrets.TEMPLATES_BUCKET }} \
+            -k "${{ secrets.SAM_API_KEY }}" \
+            -n "${{ secrets.COMPANY_NAME }}" \
+            -c "${{ secrets.COMPANY_CONTACT }}"
+      
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests for development environment..."
+          # Add smoke test commands here
+          echo "Smoke tests completed"
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: package
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment: staging
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Deploy to staging
+        run: |
+          chmod +x infrastructure/scripts/deploy.sh
+          ./infrastructure/scripts/deploy.sh \
+            -e staging \
+            -b ${{ secrets.TEMPLATES_BUCKET }} \
+            -k "${{ secrets.SAM_API_KEY }}" \
+            -n "${{ secrets.COMPANY_NAME }}" \
+            -c "${{ secrets.COMPANY_CONTACT }}"
+      
+      - name: Run integration tests
+        run: |
+          echo "Running integration tests for staging environment..."
+          # Add integration test commands here
+          echo "Integration tests completed"
+
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Deploy to production
+        run: |
+          chmod +x infrastructure/scripts/deploy.sh
+          ./infrastructure/scripts/deploy.sh \
+            -e prod \
+            -b ${{ secrets.TEMPLATES_BUCKET }} \
+            -k "${{ secrets.SAM_API_KEY }}" \
+            -n "${{ secrets.COMPANY_NAME }}" \
+            -c "${{ secrets.COMPANY_CONTACT }}"
+      
+      - name: Run production smoke tests
+        run: |
+          echo "Running production smoke tests..."
+          # Add production smoke test commands here
+          echo "Production smoke tests completed"
+      
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "Production deployment completed successfully!"
+          # Add notification logic here (Slack, email, etc.)
+
+  rollback:
+    name: Rollback Deployment
+    runs-on: ubuntu-latest
+    if: failure() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [deploy-dev, deploy-staging, deploy-prod]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Determine environment for rollback
+        id: determine-env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event.inputs.environment }}" == "prod" ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Rollback deployment
+        run: |
+          chmod +x infrastructure/scripts/rollback.sh
+          ./infrastructure/scripts/rollback.sh \
+            -e ${{ steps.determine-env.outputs.environment }} \
+            -f
+      
+      - name: Notify rollback
+        run: |
+          echo "Deployment rolled back for environment: ${{ steps.determine-env.outputs.environment }}"
+          # Add notification logic here

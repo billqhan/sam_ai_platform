@@ -58,20 +58,31 @@
     - Test retry logic and timeout scenarios
     - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 3. Implement opportunity processing Lambda function
-  - [ ] 3.1 Create sam-json-processor Lambda function structure
+- [x] 3. Implement opportunity processing Lambda function
+
+
+
+
+
+  - [x] 3.1 Create sam-json-processor Lambda function structure
+
+
     - Set up Python project with enhanced memory and ephemeral storage configuration
     - Implement S3 event trigger handling and JSON parsing
     - Create SamJsonProcessorRole IAM role integration
     - _Requirements: 2.1, 2.5_
   
-  - [ ] 3.2 Implement opportunity splitting logic
+  - [x] 3.2 Implement opportunity splitting logic
+
+
     - Parse SAM opportunities JSON and extract individual opportunities
     - Create individual opportunity files with opportunity_number prefix
     - Implement concurrent processing for multiple opportunities
     - _Requirements: 2.2, 2.3_
   
-  - [ ] 3.3 Implement resource file downloading
+  - [x] 3.3 Implement resource file downloading
+
+
     - Download associated files from resource_links in opportunities
     - Apply opportunity_number prefix to all downloaded files
     - Handle download failures gracefully and continue processing

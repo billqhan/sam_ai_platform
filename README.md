@@ -18,25 +18,81 @@ The system uses a serverless, event-driven architecture built on AWS:
 ├── src/
 │   ├── lambdas/                    # Lambda function implementations
 │   │   ├── sam-gov-daily-download/
+│   │   │   ├── handler.py          # Main Lambda handler
+│   │   │   ├── lambda_function.py  # Lambda entry point
+│   │   │   ├── requirements.txt    # Dependencies
+│   │   │   └── test_lambda.py      # Unit tests
 │   │   ├── sam-json-processor/
+│   │   │   ├── handler.py          # Processing logic
+│   │   │   ├── requirements.txt    # Dependencies
+│   │   │   ├── pytest.ini          # Test configuration
+│   │   │   ├── test_handler.py     # Handler tests
+│   │   │   └── test_opportunity_processing.py  # Processing tests
 │   │   ├── sam-sqs-generate-match-reports/
+│   │   │   ├── handler.py          # Match report generation
+│   │   │   ├── requirements.txt    # Dependencies
+│   │   │   └── test_handler.py     # Unit tests
 │   │   ├── sam-produce-user-report/
-│   │   ├── sam-merge-and-archive-result-logs/
-│   │   └── sam-produce-web-reports/
+│   │   │   ├── handler.py          # Report generation handler
+│   │   │   ├── report_generator.py # Report generation logic
+│   │   │   ├── template_manager.py # Template management
+│   │   │   └── requirements.txt    # Dependencies
+│   │   ├── sam-produce-web-reports/
+│   │   │   ├── handler.py          # Web report handler
+│   │   │   ├── dashboard_generator.py  # Dashboard creation
+│   │   │   ├── data_aggregator.py  # Data aggregation
+│   │   │   └── requirements.txt    # Dependencies
+│   │   └── sam-merge-and-archive-result-logs/
+│   │       ├── handler.py          # Log merging handler
+│   │       └── requirements.txt    # Dependencies
 │   └── shared/                     # Shared utilities and libraries
+│       ├── __init__.py             # Package initialization
 │       ├── aws_clients.py          # AWS service clients
-│       ├── logging_config.py       # Structured logging
+│       ├── bedrock_utils.py        # Bedrock AI utilities
+│       ├── config.py               # Configuration management
+│       ├── dlq_handler.py          # Dead letter queue handling
 │       ├── error_handling.py       # Error handling and retry logic
-│       └── config.py               # Configuration management
+│       ├── logging_config.py       # Structured logging
+│       ├── metrics.py              # CloudWatch metrics
+│       ├── sqs_processor.py        # SQS message processing
+│       ├── sqs_utils.py            # SQS utilities
+│       ├── tracing.py              # X-Ray tracing
+│       └── tests/                  # Shared utility tests
 ├── infrastructure/                 # Infrastructure as Code
 │   ├── cloudformation/
-│   │   └── template.yaml
-│   └── scripts/
-│       └── deploy.sh
-└── .kiro/specs/ai-rfp-response-agent/  # Project specifications
-    ├── requirements.md
-    ├── design.md
-    └── tasks.md
+│   │   ├── main-template.yaml      # Main CloudFormation template
+│   │   ├── master-template.yaml    # Master template
+│   │   ├── template.yaml           # Legacy template
+│   │   ├── lambda-functions.yaml   # Lambda function definitions
+│   │   ├── s3-bucket-policies.yaml # S3 bucket configurations
+│   │   ├── s3-event-notifications.yaml  # S3 event triggers
+│   │   ├── iam-security-policies.yaml   # IAM roles and policies
+│   │   ├── eventbridge-rules.yaml  # EventBridge scheduling
+│   │   ├── monitoring-alerting.yaml     # CloudWatch monitoring
+│   │   ├── parameters-dev.json     # Development parameters
+│   │   ├── parameters-prod.json    # Production parameters
+│   │   ├── README.md               # Infrastructure documentation
+│   │   ├── MONITORING.md           # Monitoring guide
+│   │   └── SECURITY.md             # Security documentation
+│   ├── scripts/
+│   │   ├── deploy.sh               # Unix deployment script
+│   │   ├── deploy.ps1              # PowerShell deployment script
+│   │   ├── manage-config.sh        # Configuration management
+│   │   ├── package-lambdas.sh      # Lambda packaging
+│   │   └── rollback.sh             # Rollback script
+│   └── DEPLOYMENT.md               # Deployment documentation
+├── reports/                        # Task completion reports
+│   ├── task-1-completion-report.md
+│   ├── task-2-completion-report.md
+│   └── ... (additional task reports)
+├── .github/
+│   └── workflows/
+│       └── deploy.yml              # GitHub Actions CI/CD
+├── .kiro/specs/ai-rfp-response-agent/  # Project specifications
+│   ├── requirements.md             # Feature requirements
+│   ├── design.md                   # System design
+│   └── tasks.md                    # Implementation tasks
+└── README.md                       # This file
 ```
 
 ## Getting Started
@@ -61,9 +117,22 @@ Key variables:
 1. Set up your environment variables
 2. Run the deployment script:
 
+**Unix/Linux/macOS:**
 ```bash
 ./infrastructure/scripts/deploy.sh [environment] [sam-api-key]
 ```
+
+**Windows PowerShell:**
+```powershell
+.\infrastructure\scripts\deploy.ps1 [environment] [sam-api-key]
+```
+
+Additional deployment utilities:
+- `manage-config.sh` - Configuration management
+- `package-lambdas.sh` - Lambda function packaging
+- `rollback.sh` - Rollback to previous deployment
+
+See `infrastructure/DEPLOYMENT.md` for detailed deployment instructions.
 
 ## Development
 
@@ -72,16 +141,50 @@ Key variables:
 The `src/shared/` directory contains common utilities used across all Lambda functions:
 
 - **AWS Clients**: Centralized AWS service client management with retry logic
+- **Bedrock Utils**: AI-powered opportunity matching utilities
 - **Logging**: Structured JSON logging for CloudWatch
 - **Error Handling**: Consistent error handling with retry strategies
 - **Configuration**: Environment variable management and constants
+- **Metrics**: CloudWatch metrics collection
+- **SQS Processing**: Message queue processing utilities
+- **Tracing**: X-Ray distributed tracing
+- **DLQ Handler**: Dead letter queue management
 
 ### Adding New Lambda Functions
 
 1. Create a new directory under `src/lambdas/`
 2. Add `requirements.txt` with dependencies
-3. Import shared utilities: `from shared import aws_clients, get_logger, config`
-4. Use the error handling decorator: `@handle_lambda_error`
+3. Create `handler.py` with your main logic
+4. Import shared utilities: `from shared import aws_clients, get_logger, config`
+5. Use the error handling decorator: `@handle_lambda_error`
+6. Add unit tests following the existing pattern
+
+### Testing
+
+Each Lambda function includes unit tests. Run tests using:
+
+```bash
+# For individual functions
+cd src/lambdas/[function-name]
+python -m pytest
+
+# For shared utilities
+cd src/shared
+python -m pytest tests/
+```
+
+### CI/CD Pipeline
+
+The project uses GitHub Actions for continuous integration and deployment:
+- `.github/workflows/deploy.yml` - Automated testing and deployment
+- Triggers on push to main branch and pull requests
+- Runs tests, packages Lambda functions, and deploys to AWS
+
+### Task Reports
+
+Implementation progress is tracked in the `reports/` directory:
+- Task completion reports document the implementation of each feature
+- Reports include implementation details, testing results, and deployment notes
 
 ## Monitoring
 

@@ -15,49 +15,14 @@ The system uses a serverless, event-driven architecture built on AWS:
 ## Project Structure
 
 ```
-├── src/
-│   ├── lambdas/                    # Lambda function implementations
-│   │   ├── sam-gov-daily-download/
-│   │   │   ├── handler.py          # Main Lambda handler
-│   │   │   ├── lambda_function.py  # Lambda entry point
-│   │   │   ├── requirements.txt    # Dependencies
-│   │   │   └── test_lambda.py      # Unit tests
-│   │   ├── sam-json-processor/
-│   │   │   ├── handler.py          # Processing logic
-│   │   │   ├── requirements.txt    # Dependencies
-│   │   │   ├── pytest.ini          # Test configuration
-│   │   │   ├── test_handler.py     # Handler tests
-│   │   │   └── test_opportunity_processing.py  # Processing tests
-│   │   ├── sam-sqs-generate-match-reports/
-│   │   │   ├── handler.py          # Match report generation
-│   │   │   ├── requirements.txt    # Dependencies
-│   │   │   └── test_handler.py     # Unit tests
-│   │   ├── sam-produce-user-report/
-│   │   │   ├── handler.py          # Report generation handler
-│   │   │   ├── report_generator.py # Report generation logic
-│   │   │   ├── template_manager.py # Template management
-│   │   │   └── requirements.txt    # Dependencies
-│   │   ├── sam-produce-web-reports/
-│   │   │   ├── handler.py          # Web report handler
-│   │   │   ├── dashboard_generator.py  # Dashboard creation
-│   │   │   ├── data_aggregator.py  # Data aggregation
-│   │   │   └── requirements.txt    # Dependencies
-│   │   └── sam-merge-and-archive-result-logs/
-│   │       ├── handler.py          # Log merging handler
-│   │       └── requirements.txt    # Dependencies
-│   └── shared/                     # Shared utilities and libraries
-│       ├── __init__.py             # Package initialization
-│       ├── aws_clients.py          # AWS service clients
-│       ├── bedrock_utils.py        # Bedrock AI utilities
-│       ├── config.py               # Configuration management
-│       ├── dlq_handler.py          # Dead letter queue handling
-│       ├── error_handling.py       # Error handling and retry logic
-│       ├── logging_config.py       # Structured logging
-│       ├── metrics.py              # CloudWatch metrics
-│       ├── sqs_processor.py        # SQS message processing
-│       ├── sqs_utils.py            # SQS utilities
-│       ├── tracing.py              # X-Ray tracing
-│       └── tests/                  # Shared utility tests
+├── README.md                       # This file
+├── .kiro/specs/ai-rfp-response-agent/  # Project specifications
+│   ├── requirements.md             # Feature requirements
+│   ├── design.md                   # System design
+│   └── tasks.md                    # Implementation tasks
+├── .github/
+│   └── workflows/
+│       └── deploy.yml              # GitHub Actions CI/CD (manual trigger only)
 ├── infrastructure/                 # Infrastructure as Code
 │   ├── cloudformation/
 │   │   ├── main-template.yaml      # Main CloudFormation template
@@ -85,14 +50,49 @@ The system uses a serverless, event-driven architecture built on AWS:
 │   ├── task-1-completion-report.md
 │   ├── task-2-completion-report.md
 │   └── ... (additional task reports)
-├── .github/
-│   └── workflows/
-│       └── deploy.yml              # GitHub Actions CI/CD
-├── .kiro/specs/ai-rfp-response-agent/  # Project specifications
-│   ├── requirements.md             # Feature requirements
-│   ├── design.md                   # System design
-│   └── tasks.md                    # Implementation tasks
-└── README.md                       # This file
+└── src/
+    ├── lambdas/                    # Lambda function implementations
+    │   ├── sam-gov-daily-download/
+    │   │   ├── handler.py          # Main Lambda handler
+    │   │   ├── lambda_function.py  # Lambda entry point
+    │   │   ├── requirements.txt    # Dependencies
+    │   │   └── test_lambda.py      # Unit tests
+    │   ├── sam-json-processor/
+    │   │   ├── handler.py          # Processing logic
+    │   │   ├── requirements.txt    # Dependencies
+    │   │   ├── pytest.ini          # Test configuration
+    │   │   ├── test_handler.py     # Handler tests
+    │   │   └── test_opportunity_processing.py  # Processing tests
+    │   ├── sam-sqs-generate-match-reports/
+    │   │   ├── handler.py          # Match report generation
+    │   │   ├── requirements.txt    # Dependencies
+    │   │   └── test_handler.py     # Unit tests
+    │   ├── sam-produce-user-report/
+    │   │   ├── handler.py          # Report generation handler
+    │   │   ├── report_generator.py # Report generation logic
+    │   │   ├── template_manager.py # Template management
+    │   │   └── requirements.txt    # Dependencies
+    │   ├── sam-produce-web-reports/
+    │   │   ├── handler.py          # Web report handler
+    │   │   ├── dashboard_generator.py  # Dashboard creation
+    │   │   ├── data_aggregator.py  # Data aggregation
+    │   │   └── requirements.txt    # Dependencies
+    │   └── sam-merge-and-archive-result-logs/
+    │       ├── handler.py          # Log merging handler
+    │       └── requirements.txt    # Dependencies
+    └── shared/                     # Shared utilities and libraries
+        ├── __init__.py             # Package initialization
+        ├── aws_clients.py          # AWS service clients
+        ├── bedrock_utils.py        # Bedrock AI utilities
+        ├── config.py               # Configuration management
+        ├── dlq_handler.py          # Dead letter queue handling
+        ├── error_handling.py       # Error handling and retry logic
+        ├── logging_config.py       # Structured logging
+        ├── metrics.py              # CloudWatch metrics
+        ├── sqs_processor.py        # SQS message processing
+        ├── sqs_utils.py            # SQS utilities
+        ├── tracing.py              # X-Ray tracing
+        └── tests/                  # Shared utility tests
 ```
 
 ## Getting Started
@@ -176,9 +176,16 @@ python -m pytest tests/
 ### CI/CD Pipeline
 
 The project uses GitHub Actions for continuous integration and deployment:
-- `.github/workflows/deploy.yml` - Automated testing and deployment
-- Triggers on push to main branch and pull requests
-- Runs tests, packages Lambda functions, and deploys to AWS
+- `.github/workflows/deploy.yml` - Manual deployment workflow
+- **Manual trigger only** - No automatic deployments on push/PR
+- Runs validation, tests, packages Lambda functions, and deploys to AWS
+- Can be triggered manually from GitHub Actions UI with environment selection
+
+To run a manual deployment:
+1. Go to your GitHub repository → Actions tab
+2. Select "Deploy AI-powered RFP Response Agent"
+3. Click "Run workflow"
+4. Choose your target environment (dev/staging/prod)
 
 ### Task Reports
 

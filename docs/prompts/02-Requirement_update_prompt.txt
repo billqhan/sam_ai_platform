@@ -1,0 +1,95 @@
+Revisions
+
+For Requirement 1, the API should only retry 1 time
+
+
+
+for Requirement 4, I want the Bedrock KB to be a "S3 Vectors as a vector store"
+
+
+
+For Req 6,
+
+        * Individual Details Results are sent to folder YYYY-MM-DD/, into subfolder for matches/ or no_matches/
+
+                   - filename is <solocition_id>.json
+
+        * Errors sent to folder YYYY-MM-DD/, into subfolder for errors    
+
+
+
+please change the processing summary, the Outputs of Runs Results to s3://sam-matching-out-runs/runs/
+
+
+
+for Req 7,
+
+the "sam-merge-and-archive-result-logs" Lambda function reads from  s3://sam-matching-out-runs/runs/
+
+
+
+ Aggregrates all **Runs** into a single file in YYYYMMDDtHHMMZ.JSON FORMAT
+
+       s3://sam-matching-out-runs/runs/YYYYMMDDtHHMMZ.JSON
+
+       Archives old indivedual runs into archive/ folder
+
+
+
+
+
+AFTER REQ 7, there should be another requirment to "produce-user-report"
+
+Lambda function name : sam-produce-user-report
+
+
+
+Inputs 
+
+        - Currently triggered by new single "<solocition_id>.json" file  
+
+    
+
+        - New files would appear in  s3://sam-matching-out-sqs/YYYY-MM-DD/  
+
+
+
+    Output
+
+        - Results are pushed to s3://sam-opportunity-responses  
+
+
+
+Produces a simple text file, and a Microsoft .docx  file
+
+
+
+These files are "readable" by the consumer, will contain a summary of the results , and also a potential email to the SAM solicitian POC, providing a template for an email expressinng the company's interest and reasoning based upon the match output generated
+
+
+
+(In a separate Requrement, i would like these files to be sent out via SMS message. I would like users to subscribe to SMS to receive this message)
+
+
+
+for Req 8,
+
+Please refer to the lambda function as "sam-produce-web-reports"
+
+
+
+Currently triggered by new Run results file matching format "s3://sam-matching-out-runs/runs/2*.json"
+
+
+
+Output 
+
+        -   Looks in same s3 folder for all runs with the same "date prefix (YYYYMMDD)" as the file that triggered the run 
+
+        (s3://sam-matching-out-runs/runs/YYYYMMDDtHHMMZ.JSON) 
+
+        -   Aggregates all previous run results for that day
+
+        -   Genereates a  webpage in s3://sam-website/dashboards/  
+
+        -    Filename is Summary_YYYYMMDD.html (Example Summary_20250923.html)

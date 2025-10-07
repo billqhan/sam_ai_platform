@@ -1,0 +1,60 @@
+
+Please make the following changes to the Design Document: 
+
+Add: IAM Role "SamJsonProcessorRole"  
+
+#### sam-gov-daily-download
+Add **Environment Variables**:
+API_LIMIT: 1000 (max records the SAM API can return)
+
+Add: 
+(If _From and _to are populated, allows for custom date span to be passed to SAM API, instead of the default which is to retrieve data from the previous day)
+OVERRIDE_DATE_FORMAT MM/DD/YYYY
+OVERRIDE_POSTED_FROM: 
+OVERRIDE_POSTED_TO:
+
+#### sam-json-processor
+Modify: 
+- **Memory**: 2048 MB
+Add:
+Ephemeral storage: 1024 MB
+
+#### sam-sqs-generate-match-reports
+(I need to limits on how many files are processed per opportunity, and restrict the number of tokens that will be uses )
+MAX_ATTACHMENT_FILES: 4
+MAX_DESCRIPTION_CHARS: 20000
+MAX_ATTACHMENT_CHARS: 16000
+
+(I want to use different AI Models for "extracting opportunity DESCriptions" and for "MATCHING" opportunity to KB data  )
+MODEL_ID_DESC
+MODEL_ID_MATCH
+
+debug_mode: true (debug flag)
+
+process_delay_seconds: 60 (used to prevent too many requests threshold being hit on LLM requests)
+
+#### sam-merge-and-archive-result-logs
+- **Memory**: 125 MB
+- **Ephemeral storage** : 512MB
+
+************
+
+For Match Result JSON Structure, 
+Please updated the schema to reflect the following format:
+
+Output JSON schema:
+{{
+  "match_score": 0.0,
+  "rationale": "6-10 sentences, or 'No relevant information found.'",
+  "citations": [
+    {{
+      "document_title": "",
+      "section_or_page": "",
+      "excerpt": ""
+    }}
+  ],
+  "opportunity_required_skills": ["..."],
+  "company_skills": ["..."],
+  "past_performance": []
+}}
+

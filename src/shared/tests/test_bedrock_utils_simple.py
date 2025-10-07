@@ -13,7 +13,6 @@ def test_truncate_text():
     # Create a mock client without initializing AWS clients
     with patch('src.shared.bedrock_utils.aws_clients'):
         with patch('src.shared.bedrock_utils.config') as mock_config:
-            mock_config.bedrock.knowledge_base_id = 'test-kb'
             mock_config.bedrock.model_id_desc = 'test-model'
             mock_config.bedrock.model_id_match = 'test-model'
             mock_config.processing.process_delay_seconds = 1
@@ -37,7 +36,6 @@ def test_bedrock_client_initialization():
     """Test BedrockClient initialization with mocked dependencies."""
     with patch('src.shared.bedrock_utils.aws_clients') as mock_aws_clients:
         with patch('src.shared.bedrock_utils.config') as mock_config:
-            mock_config.bedrock.knowledge_base_id = 'test-kb-id'
             mock_config.bedrock.model_id_desc = 'test-model-desc'
             mock_config.bedrock.model_id_match = 'test-model-match'
             mock_config.processing.process_delay_seconds = 60
@@ -50,7 +48,6 @@ def test_bedrock_client_initialization():
             from src.shared.bedrock_utils import BedrockClient
             client = BedrockClient()
             
-            assert client.knowledge_base_id == 'test-kb-id'
             assert client.model_id_desc == 'test-model-desc'
             assert client.model_id_match == 'test-model-match'
             assert client.process_delay_seconds == 60
@@ -61,7 +58,6 @@ def test_extract_opportunity_info_structure():
     """Test that extract_opportunity_info creates proper prompt structure."""
     with patch('src.shared.bedrock_utils.aws_clients') as mock_aws_clients:
         with patch('src.shared.bedrock_utils.config') as mock_config:
-            mock_config.bedrock.knowledge_base_id = 'test-kb'
             mock_config.bedrock.model_id_desc = 'test-model'
             mock_config.bedrock.model_id_match = 'test-model'
             mock_config.processing.process_delay_seconds = 1
@@ -103,7 +99,6 @@ def test_calculate_company_match_structure():
     """Test that calculate_company_match handles the flow correctly."""
     with patch('src.shared.bedrock_utils.aws_clients') as mock_aws_clients:
         with patch('src.shared.bedrock_utils.config') as mock_config:
-            mock_config.bedrock.knowledge_base_id = 'test-kb'
             mock_config.bedrock.model_id_desc = 'test-model-desc'
             mock_config.bedrock.model_id_match = 'test-model-match'
             mock_config.processing.process_delay_seconds = 1
@@ -116,13 +111,13 @@ def test_calculate_company_match_structure():
             from src.shared.bedrock_utils import BedrockClient
             client = BedrockClient()
             
-            # Mock knowledge base results
-            kb_results = [
+            # Mock S3 vector results
+            s3_results = [
                 {
                     'content': 'Company capability 1',
                     'score': 0.9,
                     'metadata': {},
-                    'location': {'s3Location': {'uri': 'company-info.pdf'}}
+                    'location': {'s3Location': {'uri': 's3://bucket/company-info.json'}}
                 }
             ]
             
@@ -136,9 +131,9 @@ def test_calculate_company_match_structure():
                 'past_performance': ['project1']
             })
             
-            with patch.object(client, 'query_knowledge_base') as mock_kb:
+            with patch.object(client, 'query_s3_vectors') as mock_s3:
                 with patch.object(client, 'invoke_llm_model') as mock_llm:
-                    mock_kb.return_value = kb_results
+                    mock_s3.return_value = s3_results
                     mock_llm.return_value = llm_response
                     
                     result = client.calculate_company_match(
@@ -150,13 +145,12 @@ def test_calculate_company_match_structure():
                     assert result['is_match'] is True
                     assert result['rationale'] == 'Good match based on capabilities'
                     assert len(result['citations']) == 1
-                    assert result['citations'][0]['document_title'] == 'company-info.pdf'
+                    assert result['citations'][0]['document_title'] == 's3://bucket/company-info.json'
 
 def test_get_bedrock_client_lazy_initialization():
     """Test lazy initialization of global client."""
     with patch('src.shared.bedrock_utils.aws_clients') as mock_aws_clients:
         with patch('src.shared.bedrock_utils.config') as mock_config:
-            mock_config.bedrock.knowledge_base_id = 'test-kb'
             mock_config.bedrock.model_id_desc = 'test-model'
             mock_config.bedrock.model_id_match = 'test-model'
             mock_config.processing.process_delay_seconds = 1

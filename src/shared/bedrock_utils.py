@@ -20,7 +20,6 @@ class BedrockClient:
         self.bedrock_agent_runtime = aws_clients.bedrock_agent_runtime
         
         # Configuration from environment variables
-        self.knowledge_base_id = config.bedrock.knowledge_base_id
         self.model_id_desc = config.bedrock.model_id_desc
         self.model_id_match = config.bedrock.model_id_match
         self.process_delay_seconds = config.processing.process_delay_seconds
@@ -186,55 +185,115 @@ Format your response as a clear, structured summary that would help a business d
             return f"Error extracting opportunity information: {str(e)}"
     
     @handle_aws_error
-    def query_knowledge_base(self, query: str, max_results: int = 10) -> List[Dict[str, Any]]:
+    def query_s3_vectors(self, query: str, max_results: int = 10) -> List[Dict[str, Any]]:
         """
-        Query the company information knowledge base.
+        Query company information from S3-stored vectors using semantic search.
         
         Args:
             query: The query string
             max_results: Maximum number of results to return
             
         Returns:
-            List of knowledge base results with content and metadata
+            List of results with content and metadata
         """
-        if not self.knowledge_base_id:
-            logger.error("Knowledge base ID not configured")
-            return []
-        
         try:
-            logger.info(f"Querying knowledge base with: {query[:100]}...")
+            logger.info(f"Querying S3 vectors with: {query[:100]}...")
             
-            response = self.bedrock_agent_runtime.retrieve(
-                knowledgeBaseId=self.knowledge_base_id,
-                retrievalQuery={
-                    'text': query
-                },
-                retrievalConfiguration={
-                    'vectorSearchConfiguration': {
-                        'numberOfResults': max_results
-                    }
-                }
-            )
+            # Generate embedding for the query
+            query_embedding = self._generate_embedding(query)
+            if not query_embedding:
+                logger.error("Failed to generate query embedding")
+                return []
             
-            results = []
-            for result in response.get('retrievalResults', []):
-                results.append({
-                    'content': result.get('content', {}).get('text', ''),
-                    'score': result.get('score', 0.0),
-                    'metadata': result.get('metadata', {}),
-                    'location': result.get('location', {})
-                })
+            # Search for similar vectors in S3
+            results = self._search_similar_vectors(query_embedding, max_results)
             
-            logger.info(f"Retrieved {len(results)} results from knowledge base")
+            logger.info(f"Retrieved {len(results)} results from S3 vector store")
             return results
             
-        except ClientError as e:
-            error_code = e.response['Error']['Code']
-            logger.error(f"Knowledge base query failed: {error_code}")
-            return []
         except Exception as e:
-            logger.error(f"Unexpected error querying knowledge base: {str(e)}")
+            logger.error(f"Unexpected error querying S3 vectors: {str(e)}")
             return []
+    
+    def _generate_embedding(self, text: str) -> Optional[List[float]]:
+        """Generate embedding for text using Bedrock embedding model."""
+        try:
+            body = {
+                "inputText": text
+            }
+            
+            response = self.bedrock_runtime.invoke_model(
+                modelId="amazon.titan-embed-text-v1",
+                body=json.dumps(body),
+                contentType='application/json',
+                accept='application/json'
+            )
+            
+            response_body = json.loads(response['body'].read())
+            return response_body.get('embedding', [])
+            
+        except Exception as e:
+            logger.error(f"Failed to generate embedding: {str(e)}")
+            return None
+    
+    def _search_similar_vectors(self, query_embedding: List[float], max_results: int) -> List[Dict[str, Any]]:
+        """Search for similar vectors in S3 storage."""
+        try:
+            from .aws_clients import aws_clients
+            s3_client = aws_clients.s3
+            
+            # List objects in the vector store bucket
+            vector_bucket = config.s3.sam_company_info.replace('-company-info', '-company-info-vectors')
+            
+            response = s3_client.list_objects_v2(Bucket=vector_bucket)
+            
+            results = []
+            for obj in response.get('Contents', []):
+                if obj['Key'].endswith('.json'):
+                    # Load vector data
+                    vector_obj = s3_client.get_object(Bucket=vector_bucket, Key=obj['Key'])
+                    vector_data = json.loads(vector_obj['Body'].read())
+                    
+                    # Calculate similarity (simple dot product for now)
+                    stored_embedding = vector_data.get('embedding', [])
+                    if stored_embedding:
+                        similarity = self._calculate_similarity(query_embedding, stored_embedding)
+                        
+                        results.append({
+                            'content': vector_data.get('content', ''),
+                            'score': similarity,
+                            'metadata': vector_data.get('metadata', {}),
+                            'location': {'s3Location': {'uri': f"s3://{vector_bucket}/{obj['Key']}"}}
+                        })
+            
+            # Sort by similarity score and return top results
+            results.sort(key=lambda x: x['score'], reverse=True)
+            return results[:max_results]
+            
+        except Exception as e:
+            logger.error(f"Failed to search S3 vectors: {str(e)}")
+            return []
+    
+    def _calculate_similarity(self, embedding1: List[float], embedding2: List[float]) -> float:
+        """Calculate cosine similarity between two embeddings."""
+        try:
+            import math
+            
+            # Dot product
+            dot_product = sum(a * b for a, b in zip(embedding1, embedding2))
+            
+            # Magnitudes
+            magnitude1 = math.sqrt(sum(a * a for a in embedding1))
+            magnitude2 = math.sqrt(sum(a * a for a in embedding2))
+            
+            if magnitude1 == 0 or magnitude2 == 0:
+                return 0.0
+            
+            return dot_product / (magnitude1 * magnitude2)
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate similarity: {str(e)}")
+            return 0.0
     
     def calculate_company_match(self, opportunity_info: str, opportunity_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -247,15 +306,15 @@ Format your response as a clear, structured summary that would help a business d
         Returns:
             Dictionary containing match score, rationale, and other match details
         """
-        # Query knowledge base for relevant company information
-        kb_results = self.query_knowledge_base(opportunity_info)
+        # Query S3 vectors for relevant company information
+        kb_results = self.query_s3_vectors(opportunity_info)
         
         if not kb_results:
-            logger.warning("No knowledge base results found for opportunity matching")
+            logger.warning("No S3 vector results found for opportunity matching")
             return {
                 'match_score': 0.0,
                 'is_match': False,
-                'rationale': 'No relevant company information found in knowledge base.',
+                'rationale': 'No relevant company information found in S3 vector store.',
                 'citations': [],
                 'opportunity_required_skills': [],
                 'company_skills': [],

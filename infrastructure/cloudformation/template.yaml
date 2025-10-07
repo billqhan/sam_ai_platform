@@ -128,177 +128,22 @@ Resources:
         - Key: Purpose
           Value: CompanyInformation
 
-  # OpenSearch Serverless Collection for Bedrock Knowledge Base vector store
-  BedrockKnowledgeBaseCollection:
-    Type: AWS::OpenSearchServerless::Collection
+  # S3 Bucket for storing processed vectors and embeddings
+  SamCompanyInfoVectorStoreBucket:
+    Type: AWS::S3::Bucket
     Properties:
-      Name: !Sub "${Environment}-company-info-kb-collection"
-      Type: VECTORSEARCH
-      Description: Vector store for Company Information Knowledge Base
+      BucketName: !Sub "${Environment}-sam-company-info-vectors"
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
       Tags:
         - Key: Environment
           Value: !Ref Environment
         - Key: Purpose
-          Value: BedrockKnowledgeBase
-
-  # OpenSearch Serverless Security Policy for the collection
-  BedrockKnowledgeBaseSecurityPolicy:
-    Type: AWS::OpenSearchServerless::SecurityPolicy
-    Properties:
-      Name: !Sub "${Environment}-company-info-kb-security-policy"
-      Type: encryption
-      Policy: !Sub |
-        {
-          "Rules": [
-            {
-              "ResourceType": "collection",
-              "Resource": ["collection/${Environment}-company-info-kb-collection"]
-            }
-          ],
-          "AWSOwnedKey": true
-        }
-
-  # OpenSearch Serverless Network Policy
-  BedrockKnowledgeBaseNetworkPolicy:
-    Type: AWS::OpenSearchServerless::SecurityPolicy
-    Properties:
-      Name: !Sub "${Environment}-company-info-kb-network-policy"
-      Type: network
-      Policy: !Sub |
-        [
-          {
-            "Rules": [
-              {
-                "ResourceType": "collection",
-                "Resource": ["collection/${Environment}-company-info-kb-collection"],
-                "AllowFromPublic": true
-              },
-              {
-                "ResourceType": "dashboard",
-                "Resource": ["collection/${Environment}-company-info-kb-collection"],
-                "AllowFromPublic": true
-              }
-            ]
-          }
-        ]
-
-  # IAM Role for Bedrock Knowledge Base
-  BedrockKnowledgeBaseRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub "${Environment}-BedrockKnowledgeBaseRole"
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: bedrock.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
-      Policies:
-        - PolicyName: S3DataSourceAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:ListBucket
-                Resource:
-                  - !Sub "${SamCompanyInfoBucket}/*"
-                  - !GetAtt SamCompanyInfoBucket.Arn
-        - PolicyName: OpenSearchServerlessAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - aoss:APIAccessAll
-                Resource: !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/${Environment}-company-info-kb-collection"
-
-  # OpenSearch Serverless Data Access Policy
-  BedrockKnowledgeBaseDataAccessPolicy:
-    Type: AWS::OpenSearchServerless::AccessPolicy
-    Properties:
-      Name: !Sub "${Environment}-company-info-kb-data-access-policy"
-      Type: data
-      Policy: !Sub |
-        [
-          {
-            "Rules": [
-              {
-                "ResourceType": "collection",
-                "Resource": ["collection/${Environment}-company-info-kb-collection"],
-                "Permission": [
-                  "aoss:CreateCollectionItems",
-                  "aoss:DeleteCollectionItems",
-                  "aoss:UpdateCollectionItems",
-                  "aoss:DescribeCollectionItems"
-                ]
-              },
-              {
-                "ResourceType": "index",
-                "Resource": ["index/${Environment}-company-info-kb-collection/*"],
-                "Permission": [
-                  "aoss:CreateIndex",
-                  "aoss:DeleteIndex",
-                  "aoss:UpdateIndex",
-                  "aoss:DescribeIndex",
-                  "aoss:ReadDocument",
-                  "aoss:WriteDocument"
-                ]
-              }
-            ],
-            "Principal": ["${BedrockKnowledgeBaseRole.Arn}"]
-          }
-        ]
-
-  # Bedrock Knowledge Base
-  CompanyInformationKnowledgeBase:
-    Type: AWS::Bedrock::KnowledgeBase
-    DependsOn: 
-      - BedrockKnowledgeBaseCollection
-      - BedrockKnowledgeBaseDataAccessPolicy
-    Properties:
-      Name: !Sub "${Environment}-Company-Information-KB"
-      Description: Knowledge Base containing company information for opportunity matching
-      RoleArn: !GetAtt BedrockKnowledgeBaseRole.Arn
-      KnowledgeBaseConfiguration:
-        Type: VECTOR
-        VectorKnowledgeBaseConfiguration:
-          EmbeddingModelArn: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v1"
-      StorageConfiguration:
-        Type: OPENSEARCH_SERVERLESS
-        OpensearchServerlessConfiguration:
-          CollectionArn: !GetAtt BedrockKnowledgeBaseCollection.CollectionArn
-          VectorIndexName: company-info-index
-          FieldMapping:
-            VectorField: vector
-            TextField: text
-            MetadataField: metadata
-      Tags:
-        Environment: !Ref Environment
-        Purpose: CompanyInformation
-
-  # Bedrock Knowledge Base Data Source
-  CompanyInformationDataSource:
-    Type: AWS::Bedrock::DataSource
-    Properties:
-      Name: !Sub "${Environment}-Company-Info-S3-DataSource"
-      Description: S3 data source for company information
-      KnowledgeBaseId: !Ref CompanyInformationKnowledgeBase
-      DataSourceConfiguration:
-        Type: S3
-        S3Configuration:
-          BucketArn: !GetAtt SamCompanyInfoBucket.Arn
-          InclusionPrefixes: []
-      VectorIngestionConfiguration:
-        ChunkingConfiguration:
-          ChunkingStrategy: FIXED_SIZE
-          FixedSizeChunkingConfiguration:
-            MaxTokens: 300
-            OverlapPercentage: 20
+          Value: VectorStorage
 
   # S3 Buckets will be defined here
   # Lambda Functions will be defined here
@@ -340,14 +185,8 @@ Outputs:
     Export:
       Name: !Sub "${Environment}-SamCompanyInfoBucketName"
   
-  CompanyInformationKnowledgeBaseId:
-    Description: ID of the Bedrock Knowledge Base for company information
-    Value: !Ref CompanyInformationKnowledgeBase
+  SamCompanyInfoVectorStoreBucketName:
+    Description: Name of the S3 bucket for vector storage
+    Value: !Ref SamCompanyInfoVectorStoreBucket
     Export:
-      Name: !Sub "${Environment}-CompanyInformationKnowledgeBaseId"
-  
-  CompanyInformationDataSourceId:
-    Description: ID of the Bedrock Knowledge Base data source
-    Value: !Ref CompanyInformationDataSource
-    Export:
-      Name: !Sub "${Environment}-CompanyInformationDataSourceId"
+      Name: !Sub "${Environment}-SamCompanyInfoVectorStoreBucketName"

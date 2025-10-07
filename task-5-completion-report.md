@@ -13,43 +13,22 @@ Successfully implemented Task 5 "Set up Bedrock Knowledge Base and AI integratio
 ### Sub-task 5.1: Create Company Information Knowledge Base
 
 #### Infrastructure Components Added
-Added comprehensive Bedrock Knowledge Base infrastructure to `infrastructure/cloudformation/template.yaml`:
+Added S3-based vector storage infrastructure to `infrastructure/cloudformation/template.yaml`:
 
 1. **S3 Bucket for Company Information**
    - `SamCompanyInfoBucket`: Secure storage for company documents
    - Versioning enabled with AES256 encryption
-   - Lifecycle policies for cost optimization
+   - Source data for vector processing
 
-2. **OpenSearch Serverless Collection**
-   - `BedrockKnowledgeBaseCollection`: Vector search collection
-   - Configured for VECTORSEARCH type
-   - Proper security and network policies
-
-3. **Security Configuration**
-   - `BedrockKnowledgeBaseSecurityPolicy`: Encryption policy
-   - `BedrockKnowledgeBaseNetworkPolicy`: Network access control
-   - `BedrockKnowledgeBaseDataAccessPolicy`: Fine-grained data access permissions
-
-4. **IAM Role and Permissions**
-   - `BedrockKnowledgeBaseRole`: Service role for Bedrock operations
-   - S3 read permissions for data source access
-   - OpenSearch Serverless access permissions
-
-5. **Knowledge Base Configuration**
-   - `CompanyInformationKnowledgeBase`: Main knowledge base resource
-   - Amazon Titan embedding model integration
-   - Vector index configuration with proper field mapping
-
-6. **Data Source Setup**
-   - `CompanyInformationDataSource`: S3 data source configuration
-   - Fixed-size chunking strategy (300 tokens, 20% overlap)
-   - Automatic ingestion and indexing
+2. **S3 Vector Store**
+   - `SamCompanyInfoVectorStoreBucket`: Dedicated S3 bucket for vector storage
+   - Versioning enabled with AES256 encryption
+   - Stores processed embeddings and metadata for semantic search
 
 #### CloudFormation Outputs
 Added exports for:
 - Company info bucket name
-- Knowledge base ID
-- Data source ID
+- Vector store bucket name
 
 ### Sub-task 5.2: Implement Bedrock AI client utilities
 
@@ -73,11 +52,11 @@ Created `src/shared/bedrock_utils.py` with comprehensive AI client functionality
    - Temperature and token limit configuration
    - Error handling with retry logic
 
-4. **Knowledge Base Query Functionality**
-   - Vector search integration with Bedrock Agent Runtime
-   - Configurable result limits
-   - Score-based result ranking
-   - Metadata and location tracking
+4. **S3 Vector Query Functionality**
+   - Custom S3-based vector search implementation
+   - Embedding generation using Amazon Titan
+   - Cosine similarity calculation for semantic matching
+   - Configurable result limits with score-based ranking
 
 5. **Opportunity Information Extraction**
    - Structured prompt engineering for opportunity analysis
@@ -87,10 +66,11 @@ Created `src/shared/bedrock_utils.py` with comprehensive AI client functionality
 
 6. **Company Matching Algorithm**
    - AI-powered matching with scoring (0.0-1.0 scale)
+   - S3 vector search for relevant company information
    - Detailed rationale generation
    - Skills gap analysis
    - Past performance correlation
-   - Citation tracking for transparency
+   - Citation tracking with S3 object references
 
 ##### Configuration Integration
 - Seamless integration with existing `config.py` system
@@ -144,11 +124,10 @@ Created comprehensive test suite in `src/shared/tests/test_bedrock_utils_simple.
 - **Knowledge Base Results**: 10 per query
 
 ### Vector Search Configuration
+- **Vector Store**: S3-based vector storage
 - **Chunk Size**: 300 tokens
 - **Overlap Percentage**: 20%
-- **Vector Field**: `vector`
-- **Text Field**: `text`
-- **Metadata Field**: `metadata`
+- **Storage Type**: S3 with automatic vector management
 
 ## Requirements Satisfied
 
@@ -156,10 +135,10 @@ Created comprehensive test suite in `src/shared/tests/test_bedrock_utils_simple.
 ✅ Implemented S3 bucket with proper security and lifecycle policies
 
 ### Requirement 4.2: Knowledge Base Integration
-✅ Created Bedrock Knowledge Base with OpenSearch Serverless backend
+✅ Implemented S3-based vector storage with custom search capabilities
 
 ### Requirement 4.4: Vector Search Capabilities
-✅ Configured vector search with Amazon Titan embeddings
+✅ Built custom vector search using Amazon Titan embeddings and S3 storage
 
 ### Requirement 5.3: AI Model Integration
 ✅ Implemented LLM model invocation with rate limiting and error handling
@@ -174,7 +153,7 @@ Created comprehensive test suite in `src/shared/tests/test_bedrock_utils_simple.
 - `src/shared/tests/test_bedrock_utils_simple.py` - Comprehensive test suite
 
 ### Modified Files
-- `infrastructure/cloudformation/template.yaml` - Added Bedrock infrastructure
+- `infrastructure/cloudformation/template.yaml` - Added Bedrock infrastructure with S3 vector store
 - `src/shared/aws_clients.py` - Enhanced with Bedrock client properties
 
 ## Integration Points

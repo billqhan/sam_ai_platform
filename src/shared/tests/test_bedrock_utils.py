@@ -176,54 +176,73 @@ class TestBedrockClient:
         assert 'Error extracting opportunity information' in result
         assert 'Test error' in result
     
-    def test_query_knowledge_base_success(self, bedrock_client_instance):
-        """Test successful knowledge base query."""
+    def test_query_s3_vectors_success(self, bedrock_client_instance):
+        """Test successful S3 vector query."""
+        mock_results = [
+            {
+                'content': 'Result 1',
+                'score': 0.9,
+                'metadata': {'key': 'value'},
+                'location': {'s3Location': {'uri': 's3://bucket/doc1.json'}}
+            },
+            {
+                'content': 'Result 2',
+                'score': 0.8,
+                'metadata': {},
+                'location': {'s3Location': {'uri': 's3://bucket/doc2.json'}}
+            }
+        ]
+        
+        with patch.object(bedrock_client_instance, '_generate_embedding') as mock_embed:
+            with patch.object(bedrock_client_instance, '_search_similar_vectors') as mock_search:
+                mock_embed.return_value = [0.1, 0.2, 0.3]
+                mock_search.return_value = mock_results
+                
+                results = bedrock_client_instance.query_s3_vectors('test query')
+                
+                assert len(results) == 2
+                assert results[0]['content'] == 'Result 1'
+                assert results[0]['score'] == 0.9
+                assert results[1]['content'] == 'Result 2'
+                assert results[1]['score'] == 0.8
+    
+    def test_query_s3_vectors_no_embedding(self, bedrock_client_instance):
+        """Test S3 vector query with embedding generation failure."""
+        with patch.object(bedrock_client_instance, '_generate_embedding') as mock_embed:
+            mock_embed.return_value = None
+            
+            results = bedrock_client_instance.query_s3_vectors('test query')
+            
+            assert results == []
+    
+    def test_generate_embedding_success(self, bedrock_client_instance):
+        """Test successful embedding generation."""
         mock_response = {
-            'retrievalResults': [
-                {
-                    'content': {'text': 'Result 1'},
-                    'score': 0.9,
-                    'metadata': {'key': 'value'},
-                    'location': {'s3Location': {'uri': 'test-doc.pdf'}}
-                },
-                {
-                    'content': {'text': 'Result 2'},
-                    'score': 0.8,
-                    'metadata': {},
-                    'location': {}
-                }
-            ]
+            'body': Mock()
         }
+        mock_response['body'].read.return_value = json.dumps({
+            'embedding': [0.1, 0.2, 0.3, 0.4]
+        }).encode()
         
-        bedrock_client_instance.bedrock_agent_runtime.retrieve.return_value = mock_response
+        bedrock_client_instance.bedrock_runtime.invoke_model.return_value = mock_response
         
-        results = bedrock_client_instance.query_knowledge_base('test query')
+        embedding = bedrock_client_instance._generate_embedding('test text')
         
-        assert len(results) == 2
-        assert results[0]['content'] == 'Result 1'
-        assert results[0]['score'] == 0.9
-        assert results[1]['content'] == 'Result 2'
-        assert results[1]['score'] == 0.8
+        assert embedding == [0.1, 0.2, 0.3, 0.4]
     
-    def test_query_knowledge_base_no_kb_id(self, bedrock_client_instance):
-        """Test knowledge base query with no KB ID configured."""
-        bedrock_client_instance.knowledge_base_id = None
+    def test_calculate_similarity(self, bedrock_client_instance):
+        """Test similarity calculation."""
+        embedding1 = [1.0, 0.0, 0.0]
+        embedding2 = [1.0, 0.0, 0.0]
         
-        results = bedrock_client_instance.query_knowledge_base('test query')
+        similarity = bedrock_client_instance._calculate_similarity(embedding1, embedding2)
         
-        assert results == []
-    
-    def test_query_knowledge_base_client_error(self, bedrock_client_instance):
-        """Test knowledge base query with client error."""
-        error = ClientError(
-            {'Error': {'Code': 'ValidationException', 'Message': 'Invalid request'}},
-            'Retrieve'
-        )
-        bedrock_client_instance.bedrock_agent_runtime.retrieve.side_effect = error
+        assert similarity == 1.0  # Perfect similarity
         
-        results = bedrock_client_instance.query_knowledge_base('test query')
+        embedding3 = [0.0, 1.0, 0.0]
+        similarity2 = bedrock_client_instance._calculate_similarity(embedding1, embedding3)
         
-        assert results == []
+        assert similarity2 == 0.0  # No similarity
     
     def test_calculate_company_match_success(self, bedrock_client_instance):
         """Test successful company match calculation."""

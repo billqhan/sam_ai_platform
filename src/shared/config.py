@@ -102,7 +102,7 @@ class ConfigManager:
         if self._bedrock_config is None:
             self._bedrock_config = BedrockConfig(
                 region=self._get_required_env('BEDROCK_REGION', 'us-east-1'),
-                knowledge_base_id=self._get_required_env('KNOWLEDGE_BASE_ID'),
+                knowledge_base_id=self._get_required_env('KNOWLEDGE_BASE_ID', ''),  # Optional for S3 vector store
                 model_id_desc=self._get_required_env('MODEL_ID_DESC', 'anthropic.claude-3-sonnet-20240229-v1:0'),
                 model_id_match=self._get_required_env('MODEL_ID_MATCH', 'anthropic.claude-3-sonnet-20240229-v1:0'),
                 max_tokens=int(self._get_required_env('MAX_TOKENS', '4000')),

@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AI-powered RFP Response Agent - Simplified Lambda Functions Template'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    Description: 'Environment name for resource naming'
+  
+  SamApiKey:
+    Type: String
+    NoEcho: true
+    Description: 'API key for SAM.gov access'
+  
+  CompanyName:
+    Type: String
+    Default: 'Your Company Name'
+    Description: 'Company name for report templates'
+  
+  CompanyContact:
+    Type: String
+    Default: 'contact@yourcompany.com'
+    Description: 'Company contact information'
+  
+  SqsSamJsonMessagesQueueArn:
+    Type: String
+    Description: 'ARN of the SQS queue for JSON messages'
+  
+  BucketPrefix:
+    Type: String
+    Default: ''
+    Description: 'Optional prefix for S3 bucket names to avoid conflicts'
+
+Conditions:
+  HasBucketPrefix: !Not [!Equals [!Ref BucketPrefix, '']]
+
+Resources:
+  # Simple IAM Role
+  SamGovDailyDownloadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # Simple Lambda Function
+  SamGovDailyDownloadFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt SamGovDailyDownloadRole.Arn
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Simple test function'}
+      MemorySize: 128
+      Timeout: 60
+
+Outputs:
+  SamGovDailyDownloadFunctionArn:
+    Description: 'ARN of the SAM.gov daily download Lambda function'
+    Value: !GetAtt SamGovDailyDownloadFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamGovDailyDownloadFunction'

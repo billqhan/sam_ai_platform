@@ -60,7 +60,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     DependsOn: MainInfrastructureStack
     Properties:
-      TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}lambda-functions.yaml'
+      TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}lambda-functions-simple.yaml'
       Parameters:
         Environment: !Ref Environment
         SamApiKey: !Ref SamApiKey

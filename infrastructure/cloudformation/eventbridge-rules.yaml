@@ -28,7 +28,7 @@ Resources:
       Name: !Sub 'sam-gov-daily-download-${Environment}'
       Description: 'Trigger SAM.gov daily download Lambda function'
       ScheduleExpression: 'cron(0 6 * * ? *)'  # Daily at 6 AM UTC
-      State: ENABLED
+      State: DISABLED
       Targets:
         - Arn: !Ref SamGovDailyDownloadFunctionArn
           Id: 'SamGovDailyDownloadTarget'

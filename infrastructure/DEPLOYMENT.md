@@ -148,7 +148,7 @@ chmod +x infrastructure/scripts/deploy.sh
 3. **Test the Pipeline:**
    ```bash
    aws lambda invoke \
-     --function-name sam-gov-daily-download-dev \
+     --function-name ${BucketPrefix}-sam-gov-daily-download-dev \
      --payload '{}' \
      response.json
    ```
@@ -218,11 +218,11 @@ aws cloudformation list-stack-resources \
 ```bash
 # List Lambda functions
 aws lambda list-functions \
-  --query 'Functions[?contains(FunctionName, `sam-`)].FunctionName'
+  --query 'Functions[?contains(FunctionName, `${BucketPrefix}-sam-`)].FunctionName'
 
 # Test function invocation
 aws lambda invoke \
-  --function-name sam-gov-daily-download-dev \
+  --function-name ${BucketPrefix}-sam-gov-daily-download-dev \
   --payload '{}' \
   response.json && cat response.json
 ```
@@ -231,11 +231,11 @@ aws lambda invoke \
 
 ```bash
 # List created buckets
-aws s3 ls | grep sam-
+aws s3 ls | grep ${BucketPrefix}-sam-
 
 # Check bucket policies
 aws s3api get-bucket-policy \
-  --bucket sam-data-in-dev
+  --bucket ${BucketPrefix}-sam-data-in-dev
 ```
 
 ### 4. SQS Queue Verification
@@ -243,11 +243,11 @@ aws s3api get-bucket-policy \
 ```bash
 # List SQS queues
 aws sqs list-queues \
-  --query 'QueueUrls[?contains(@, `sam-`)]'
+  --query 'QueueUrls[?contains(@, `${BucketPrefix}-sam-`)]'
 
 # Check queue attributes
 aws sqs get-queue-attributes \
-  --queue-url https://sqs.us-east-1.amazonaws.com/ACCOUNT/sqs-sam-json-messages-dev \
+  --queue-url https://sqs.us-east-1.amazonaws.com/ACCOUNT/${BucketPrefix}-sqs-sam-json-messages-dev \
   --attribute-names All
 ```
 
@@ -282,11 +282,11 @@ aws iam simulate-principal-policy \
 ```bash
 # Check bucket notification configuration
 aws s3api get-bucket-notification-configuration \
-  --bucket sam-data-in-dev
+  --bucket ${BucketPrefix}-sam-data-in-dev
 
 # Verify Lambda permissions
 aws lambda get-policy \
-  --function-name sam-json-processor-dev
+  --function-name ${BucketPrefix}-sam-json-processor-dev
 ```
 
 #### 4. Bedrock Access Denied
@@ -332,11 +332,11 @@ https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashbo
 ```bash
 # View recent Lambda logs
 aws logs describe-log-groups \
-  --log-group-name-prefix "/aws/lambda/sam-"
+  --log-group-name-prefix "/aws/lambda/${BucketPrefix}-sam-"
 
 # Get recent error logs
 aws logs filter-log-events \
-  --log-group-name "/aws/lambda/sam-gov-daily-download-dev" \
+  --log-group-name "/aws/lambda/${BucketPrefix}-sam-gov-daily-download-dev" \
   --filter-pattern "ERROR"
 ```
 

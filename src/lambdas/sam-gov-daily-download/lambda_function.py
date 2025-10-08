@@ -277,9 +277,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         api_client = SamGovApiClient(config)
         s3_client = S3StorageClient(config)
         
-        # Retrieve opportunities from SAM.gov with retry logic
+        # Retrieve opportunities from SAM.gov with no retry logic
         opportunities_data = None
-        max_retries = 1
+        max_retries = 0
         
         for attempt in range(max_retries + 1):
             try:

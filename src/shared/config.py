@@ -133,7 +133,7 @@ class ConfigManager:
                 base_url=self._get_required_env('SAM_API_URL', 'https://api.sam.gov/prod/opportunities/v2/search'),
                 api_key=self._get_required_env('SAM_API_KEY'),
                 timeout=int(self._get_required_env('SAM_API_TIMEOUT', '300')),
-                max_retries=int(self._get_required_env('SAM_API_MAX_RETRIES', '1'))
+                max_retries=int(self._get_required_env('SAM_API_MAX_RETRIES', '0'))
             )
         return self._sam_api_config
     

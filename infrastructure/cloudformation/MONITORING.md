@@ -229,7 +229,7 @@ Metrics include relevant dimensions for filtering:
 
 #### Recent Errors by Function
 ```sql
-SOURCE '/aws/lambda/sam-gov-daily-download-dev' 
+SOURCE '/aws/lambda/${BucketPrefix}-sam-gov-daily-download-dev' 
 | fields @timestamp, correlation_id, message, context.error
 | filter level = "ERROR"
 | sort @timestamp desc
@@ -238,7 +238,7 @@ SOURCE '/aws/lambda/sam-gov-daily-download-dev'
 
 #### Match Score Distribution
 ```sql
-SOURCE '/aws/lambda/sam-sqs-generate-match-reports-dev'
+SOURCE '/aws/lambda/${BucketPrefix}-sam-sqs-generate-match-reports-dev'
 | fields @timestamp, context.match_score, context.is_match
 | filter message = "MATCH_SCORE"
 | stats avg(context.match_score), count() by bin(5m)
@@ -246,7 +246,7 @@ SOURCE '/aws/lambda/sam-sqs-generate-match-reports-dev'
 
 #### Processing Performance
 ```sql
-SOURCE '/aws/lambda/sam-sqs-generate-match-reports-dev'
+SOURCE '/aws/lambda/${BucketPrefix}-sam-sqs-generate-match-reports-dev'
 | fields @timestamp, context.processing_time_ms, context.opportunity_id
 | filter message = "PERFORMANCE_opportunity_processing"
 | stats avg(context.processing_time_ms), max(context.processing_time_ms) by bin(15m)

@@ -91,7 +91,7 @@ class ConfigManager:
         """Get SQS configuration."""
         if self._sqs_config is None:
             self._sqs_config = SQSConfig(
-                sam_json_messages_queue=self._get_required_env('SQS_SAM_JSON_MESSAGES_QUEUE', 'sqs-sam-json-messages'),
+                sam_json_messages_queue=self._get_required_env('SQS_SAM_JSON_MESSAGES_QUEUE', 'ktest-s3-integration-dev'),
                 dead_letter_queue=self._get_required_env('SQS_DEAD_LETTER_QUEUE', 'sqs-sam-json-messages-dlq')
             )
         return self._sqs_config

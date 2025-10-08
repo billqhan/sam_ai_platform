@@ -126,7 +126,10 @@
     - _Requirements: 3.3, 3.4_
   
 
-  - [ ]* 4.3 Write unit tests for SQS integration
+  - [x]* 4.3 Write unit tests for SQS integration
+
+
+
 
     - Test message formatting and parsing
     - Test error handling and retry logic
@@ -194,7 +197,8 @@
     - _Requirements: 5.3_
 
   
-  - [ ] 6.3 Implement company matching logic
+  - [-] 6.3 Implement company matching logic
+
     - Create "Calculate Company Match" LLM processing using MODEL_ID_MATCH
     - Query Company Information Knowledge Base for relevant capabilities
     - Generate match score and detailed rationale with citations

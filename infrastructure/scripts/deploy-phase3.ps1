@@ -53,10 +53,6 @@ $Parameters = @(
         ParameterValue = $Environment
     },
     @{
-        ParameterKey = "AlertEmail"
-        ParameterValue = $CompanyContact
-    },
-    @{
         ParameterKey = "BucketPrefix"
         ParameterValue = $BucketPrefix
     }

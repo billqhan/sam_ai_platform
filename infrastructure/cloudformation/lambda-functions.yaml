@@ -39,7 +39,7 @@ Resources:
   SamGovDailyDownloadRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'SamGovDailyDownloadRole-${Environment}'
+
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -80,7 +80,7 @@ Resources:
   SamJsonProcessorRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'SamJsonProcessorRole-${Environment}'
+
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -123,7 +123,7 @@ Resources:
   SamSqsGenerateMatchReportsRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'SamSqsGenerateMatchReportsRole-${Environment}'
+
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -190,7 +190,7 @@ Resources:
   SamProduceUserReportRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'SamProduceUserReportRole-${Environment}'
+
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -225,7 +225,7 @@ Resources:
   SamMergeAndArchiveResultLogsRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'SamMergeAndArchiveResultLogsRole-${Environment}'
+
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -260,7 +260,7 @@ Resources:
   SamProduceWebReportsRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'SamProduceWebReportsRole-${Environment}'
+
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:

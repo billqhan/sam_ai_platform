@@ -31,6 +31,9 @@ Parameters:
     Default: ''
     Description: 'Optional prefix for S3 bucket names to avoid conflicts'
 
+Conditions:
+  HasBucketPrefix: !Not [!Equals [!Ref BucketPrefix, '']]
+
 Resources:
   # Lambda Execution Roles
   SamGovDailyDownloadRole:
@@ -257,7 +260,10 @@ Resources:
   SamGovDailyDownloadFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'sam-gov-daily-download-${Environment}'
+      FunctionName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-gov-daily-download-${Environment}'
+        - !Sub 'sam-gov-daily-download-${Environment}'
       Runtime: python3.11
       Handler: lambda_function.lambda_handler
       Role: !GetAtt SamGovDailyDownloadRole.Arn
@@ -273,8 +279,14 @@ Resources:
         Variables:
           SAM_API_URL: 'https://api.sam.gov/prod/opportunities/v2/search'
           SAM_API_KEY: !Ref SamApiKey
-          OUTPUT_BUCKET: !Sub 'sam-data-in-${Environment}'
-          LOG_BUCKET: !Sub 'sam-download-files-logs-${Environment}'
+          OUTPUT_BUCKET: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-data-in-${Environment}'
+            - !Sub 'sam-data-in-${Environment}'
+          LOG_BUCKET: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-download-files-logs-${Environment}'
+            - !Sub 'sam-download-files-logs-${Environment}'
           API_LIMIT: '1000'
           OVERRIDE_DATE_FORMAT: 'MM/DD/YYYY'
           OVERRIDE_POSTED_FROM: ''
@@ -284,7 +296,10 @@ Resources:
   SamJsonProcessorFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'sam-json-processor-${Environment}'
+      FunctionName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-json-processor-${Environment}'
+        - !Sub 'sam-json-processor-${Environment}'
       Runtime: python3.11
       Handler: lambda_function.lambda_handler
       Role: !GetAtt SamJsonProcessorRole.Arn
@@ -300,14 +315,20 @@ Resources:
         Mode: Active
       Environment:
         Variables:
-          OUTPUT_BUCKET: !Sub 'sam-extracted-json-resources-${Environment}'
+          OUTPUT_BUCKET: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-extracted-json-resources-${Environment}'
+            - !Sub 'sam-extracted-json-resources-${Environment}'
           MAX_CONCURRENT_DOWNLOADS: '10'
           _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-json-processor'
 
   SamSqsGenerateMatchReportsFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'sam-sqs-generate-match-reports-${Environment}'
+      FunctionName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-sqs-generate-match-reports-${Environment}'
+        - !Sub 'sam-sqs-generate-match-reports-${Environment}'
       Runtime: python3.11
       Handler: lambda_function.lambda_handler
       Role: !GetAtt SamSqsGenerateMatchReportsRole.Arn
@@ -325,8 +346,14 @@ Resources:
           BEDROCK_REGION: 'us-east-1'
           KNOWLEDGE_BASE_ID: 'placeholder-kb-id'
           MATCH_THRESHOLD: '0.7'
-          OUTPUT_BUCKET_SQS: !Sub 'sam-matching-out-sqs-${Environment}'
-          OUTPUT_BUCKET_RUNS: !Sub 'sam-matching-out-runs-${Environment}'
+          OUTPUT_BUCKET_SQS: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-matching-out-sqs-${Environment}'
+            - !Sub 'sam-matching-out-sqs-${Environment}'
+          OUTPUT_BUCKET_RUNS: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-matching-out-runs-${Environment}'
+            - !Sub 'sam-matching-out-runs-${Environment}'
           MAX_ATTACHMENT_FILES: '4'
           MAX_DESCRIPTION_CHARS: '20000'
           MAX_ATTACHMENT_CHARS: '16000'
@@ -339,7 +366,10 @@ Resources:
   SamProduceUserReportFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'sam-produce-user-report-${Environment}'
+      FunctionName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-produce-user-report-${Environment}'
+        - !Sub 'sam-produce-user-report-${Environment}'
       Runtime: python3.11
       Handler: lambda_function.lambda_handler
       Role: !GetAtt SamProduceUserReportRole.Arn
@@ -353,7 +383,10 @@ Resources:
         Mode: Active
       Environment:
         Variables:
-          OUTPUT_BUCKET: !Sub 'sam-opportunity-responses-${Environment}'
+          OUTPUT_BUCKET: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-opportunity-responses-${Environment}'
+            - !Sub 'sam-opportunity-responses-${Environment}'
           COMPANY_NAME: !Ref CompanyName
           COMPANY_CONTACT: !Ref CompanyContact
           _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-produce-user-report'
@@ -361,7 +394,10 @@ Resources:
   SamMergeAndArchiveResultLogsFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'sam-merge-and-archive-result-logs-${Environment}'
+      FunctionName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-merge-and-archive-result-logs-${Environment}'
+        - !Sub 'sam-merge-and-archive-result-logs-${Environment}'
       Runtime: python3.11
       Handler: lambda_function.lambda_handler
       Role: !GetAtt SamMergeAndArchiveResultLogsRole.Arn
@@ -377,14 +413,20 @@ Resources:
         Mode: Active
       Environment:
         Variables:
-          RUNS_BUCKET: !Sub 'sam-matching-out-runs-${Environment}'
+          RUNS_BUCKET: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-matching-out-runs-${Environment}'
+            - !Sub 'sam-matching-out-runs-${Environment}'
           ARCHIVE_FOLDER: 'archive'
           _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-merge-and-archive-result-logs'
 
   SamProduceWebReportsFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'sam-produce-web-reports-${Environment}'
+      FunctionName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-produce-web-reports-${Environment}'
+        - !Sub 'sam-produce-web-reports-${Environment}'
       Runtime: python3.11
       Handler: lambda_function.lambda_handler
       Role: !GetAtt SamProduceWebReportsRole.Arn
@@ -398,7 +440,10 @@ Resources:
         Mode: Active
       Environment:
         Variables:
-          WEBSITE_BUCKET: !Sub 'sam-website-${Environment}'
+          WEBSITE_BUCKET: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-website-${Environment}'
+            - !Sub 'sam-website-${Environment}'
           DASHBOARD_PATH: 'dashboards/'
           _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-produce-web-reports'
 

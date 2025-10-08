@@ -25,6 +25,11 @@ Parameters:
   SqsSamJsonMessagesQueueArn:
     Type: String
     Description: 'ARN of the SQS queue for JSON messages'
+  
+  BucketPrefix:
+    Type: String
+    Default: ''
+    Description: 'Optional prefix for S3 bucket names to avoid conflicts'
 
 Resources:
   # Lambda Execution Roles

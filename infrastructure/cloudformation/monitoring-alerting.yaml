@@ -11,13 +11,24 @@ Parameters:
     Type: String
     Default: 'alerts@yourcompany.com'
     Description: 'Email address for alerts'
+  
+  BucketPrefix:
+    Type: String
+    Default: ''
+    Description: 'Optional prefix for S3 bucket names to avoid conflicts'
+
+Conditions:
+  HasBucketPrefix: !Not [!Equals [!Ref BucketPrefix, '']]
 
 Resources:
   # SNS Topic for Alerts
   SamAlertsSnsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: !Sub 'sam-alerts-${Environment}'
+      TopicName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-alerts-${Environment}'
+        - !Sub 'sam-alerts-${Environment}'
       DisplayName: !Sub 'AI RFP Response Agent Alerts - ${Environment}'
 
   SamAlertsEmailSubscription:

@@ -6,6 +6,11 @@ Parameters:
     Type: String
     Default: 'dev'
     Description: 'Environment name for resource naming'
+  
+  BucketPrefix:
+    Type: String
+    Default: ''
+    Description: 'Optional prefix for S3 bucket names to avoid conflicts'
 
 Resources:
   # KMS Key for additional encryption

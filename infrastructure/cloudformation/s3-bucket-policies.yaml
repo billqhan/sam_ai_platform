@@ -10,13 +10,24 @@ Parameters:
   SqsSamJsonMessagesQueueArn:
     Type: String
     Description: 'ARN of the SQS queue for JSON messages'
+  
+  BucketPrefix:
+    Type: String
+    Default: ''
+    Description: 'Optional prefix for S3 bucket names to avoid conflicts'
+
+Conditions:
+  HasBucketPrefix: !Not [!Equals [!Ref BucketPrefix, '']]
 
 Resources:
   # S3 Bucket Policy for Website Bucket (Public Read Access)
   SamWebsiteBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
-      Bucket: !Sub 'sam-website-${Environment}'
+      Bucket: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-website-${Environment}'
+        - !Sub 'sam-website-${Environment}'
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -24,7 +35,10 @@ Resources:
             Effect: Allow
             Principal: '*'
             Action: s3:GetObject
-            Resource: !Sub 'arn:aws:s3:::sam-website-${Environment}/*'
+            Resource: !If 
+              - HasBucketPrefix
+              - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-website-${Environment}/*'
+              - !Sub 'arn:aws:s3:::sam-website-${Environment}/*'
             Condition:
               StringEquals:
                 's3:ExistingObjectTag/public': 'true'
@@ -34,7 +48,10 @@ Resources:
     Type: AWS::SQS::QueuePolicy
     Properties:
       Queues:
-        - !Sub 'https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/sqs-sam-json-messages-${Environment}'
+        - !If 
+          - HasBucketPrefix
+          - !Sub 'https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/${BucketPrefix}-sqs-sam-json-messages-${Environment}'
+          - !Sub 'https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/sqs-sam-json-messages-${Environment}'
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -46,32 +63,53 @@ Resources:
             Resource: !Ref SqsSamJsonMessagesQueueArn
             Condition:
               ArnEquals:
-                'aws:SourceArn': !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}'
+                'aws:SourceArn': !If 
+                  - HasBucketPrefix
+                  - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-extracted-json-resources-${Environment}'
+                  - !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}'
 
   # Lambda Permissions for S3 Event Notifications
   SamJsonProcessorS3Permission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Sub 'sam-json-processor-${Environment}'
+      FunctionName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-json-processor-${Environment}'
+        - !Sub 'sam-json-processor-${Environment}'
       Action: lambda:InvokeFunction
       Principal: s3.amazonaws.com
-      SourceArn: !Sub 'arn:aws:s3:::sam-data-in-${Environment}'
+      SourceArn: !If 
+        - HasBucketPrefix
+        - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-data-in-${Environment}'
+        - !Sub 'arn:aws:s3:::sam-data-in-${Environment}'
 
   SamProduceUserReportS3Permission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Sub 'sam-produce-user-report-${Environment}'
+      FunctionName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-produce-user-report-${Environment}'
+        - !Sub 'sam-produce-user-report-${Environment}'
       Action: lambda:InvokeFunction
       Principal: s3.amazonaws.com
-      SourceArn: !Sub 'arn:aws:s3:::sam-matching-out-sqs-${Environment}'
+      SourceArn: !If 
+        - HasBucketPrefix
+        - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-matching-out-sqs-${Environment}'
+        - !Sub 'arn:aws:s3:::sam-matching-out-sqs-${Environment}'
 
   SamProduceWebReportsS3Permission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Sub 'sam-produce-web-reports-${Environment}'
+      FunctionName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-produce-web-reports-${Environment}'
+        - !Sub 'sam-produce-web-reports-${Environment}'
       Action: lambda:InvokeFunction
       Principal: s3.amazonaws.com
-      SourceArn: !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}'
+      SourceArn: !If 
+        - HasBucketPrefix
+        - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-matching-out-runs-${Environment}'
+        - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}'
 
 Outputs:
   SamWebsiteBucketPolicyId:

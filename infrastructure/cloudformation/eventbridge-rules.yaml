@@ -14,6 +14,11 @@ Parameters:
   SamMergeAndArchiveResultLogsFunctionArn:
     Type: String
     Description: 'ARN of the merge and archive Lambda function'
+  
+  BucketPrefix:
+    Type: String
+    Default: ''
+    Description: 'Optional prefix for S3 bucket names to avoid conflicts'
 
 Resources:
   # EventBridge Rules

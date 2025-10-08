@@ -1,0 +1,8 @@
+{
+  "Variables": {
+    "MAX_CONCURRENT_DOWNLOADS": "10",
+    "SAM_EXTRACTED_JSON_RESOURCES_BUCKET": "ktest-sam-extracted-json-resources-dev",
+    "SAM_DATA_IN_BUCKET": "ktest-sam-data-in-dev",
+    "X_AMZN_TRACE_ID": "ai-rfp-response-agent-phase2-dev-sam-json-processor"
+  }
+}

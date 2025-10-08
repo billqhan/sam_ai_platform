@@ -1,0 +1,23 @@
+{
+  "Records": [
+    {
+      "eventVersion": "2.1",
+      "eventSource": "aws:s3",
+      "awsRegion": "us-east-1",
+      "eventTime": "2025-10-08T17:37:38.000Z",
+      "eventName": "s3:ObjectCreated:Put",
+      "s3": {
+        "s3SchemaVersion": "1.0",
+        "configurationId": "test-config",
+        "bucket": {
+          "name": "ktest-sam-data-in-dev",
+          "arn": "arn:aws:s3:::ktest-sam-data-in-dev"
+        },
+        "object": {
+          "key": "SAM_Opportunities_20251008_173738.json",
+          "size": 429675
+        }
+      }
+    }
+  ]
+}

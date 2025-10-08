@@ -112,7 +112,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     DependsOn: LambdaFunctionsStack
     Properties:
-      TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}iam-security-policies.yaml'
+      TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}iam-security-policies-simple.yaml'
       Parameters:
         Environment: !Ref Environment
         BucketPrefix: !Ref BucketPrefix

@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AI-powered RFP Response Agent - Simplified IAM Security Policies Template'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    Description: 'Environment name for resource naming'
+  
+  BucketPrefix:
+    Type: String
+    Default: ''
+    Description: 'Optional prefix for S3 bucket names to avoid conflicts'
+
+Resources:
+  # Simple KMS Key for encryption
+  SamProcessingKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: 'KMS key for AI RFP Response Agent encryption'
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+
+  SamProcessingKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/sam-processing-${Environment}'
+      TargetKeyId: !Ref SamProcessingKMSKey
+
+Outputs:
+  SamProcessingKMSKeyId:
+    Description: 'KMS Key ID for SAM processing encryption'
+    Value: !Ref SamProcessingKMSKey
+    Export:
+      Name: !Sub '${AWS::StackName}-SamProcessingKMSKey'
+  
+  SamProcessingKMSKeyArn:
+    Description: 'KMS Key ARN for SAM processing encryption'
+    Value: !GetAtt SamProcessingKMSKey.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamProcessingKMSKeyArn'

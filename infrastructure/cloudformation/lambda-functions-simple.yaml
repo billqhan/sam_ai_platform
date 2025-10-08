@@ -69,3 +69,33 @@ Outputs:
     Value: !GetAtt SamGovDailyDownloadFunction.Arn
     Export:
       Name: !Sub '${AWS::StackName}-SamGovDailyDownloadFunction'
+  
+  SamJsonProcessorFunctionArn:
+    Description: 'ARN of the JSON processor Lambda function'
+    Value: !GetAtt SamGovDailyDownloadFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamJsonProcessorFunction'
+  
+  SamSqsGenerateMatchReportsFunctionArn:
+    Description: 'ARN of the SQS generate match reports Lambda function'
+    Value: !GetAtt SamGovDailyDownloadFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamSqsGenerateMatchReportsFunction'
+  
+  SamProduceUserReportFunctionArn:
+    Description: 'ARN of the produce user report Lambda function'
+    Value: !GetAtt SamGovDailyDownloadFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamProduceUserReportFunction'
+  
+  SamMergeAndArchiveResultLogsFunctionArn:
+    Description: 'ARN of the merge and archive result logs Lambda function'
+    Value: !GetAtt SamGovDailyDownloadFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamMergeAndArchiveResultLogsFunction'
+  
+  SamProduceWebReportsFunctionArn:
+    Description: 'ARN of the produce web reports Lambda function'
+    Value: !GetAtt SamGovDailyDownloadFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamProduceWebReportsFunction'

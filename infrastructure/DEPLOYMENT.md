@@ -43,6 +43,8 @@ The phased deployment approach breaks the infrastructure into logical groups, ma
 - **Phase 3**: Security & Monitoring (IAM policies, KMS keys) - ~2-3 minutes
 
 **Deploy All Phases:**
+
+*Windows PowerShell:*
 ```powershell
 .\infrastructure\scripts\deploy-all-phases.ps1 `
   -Environment "dev" `
@@ -53,7 +55,21 @@ The phased deployment approach breaks the infrastructure into logical groups, ma
   -BucketPrefix "your-prefix"
 ```
 
+*Linux/macOS:*
+```bash
+chmod +x infrastructure/scripts/deploy-all-phases.sh
+./infrastructure/scripts/deploy-all-phases.sh \
+  -e dev \
+  -b "your-templates-bucket-name" \
+  -k "your-sam-api-key" \
+  -n "Your Company Name" \
+  -c "contact@yourcompany.com" \
+  -p "your-prefix"
+```
+
 **Deploy Individual Phases:**
+
+*Windows PowerShell:*
 ```powershell
 # Phase 1 only
 .\infrastructure\scripts\deploy-all-phases.ps1 -Phase 1 -TemplatesBucket "bucket" -SamApiKey "key" -CompanyName "Company" -CompanyContact "email"
@@ -63,6 +79,18 @@ The phased deployment approach breaks the infrastructure into logical groups, ma
 
 # Phase 3 only (requires Phase 1 and 2 to be completed)
 .\infrastructure\scripts\deploy-all-phases.ps1 -Phase 3 -TemplatesBucket "bucket" -CompanyContact "email"
+```
+
+*Linux/macOS:*
+```bash
+# Phase 1 only
+./infrastructure/scripts/deploy-all-phases.sh --phase 1 -b "bucket" -k "key" -n "Company" -c "email"
+
+# Phase 2 only (requires Phase 1 to be completed)
+./infrastructure/scripts/deploy-all-phases.sh --phase 2 -b "bucket" -k "key" -n "Company" -c "email"
+
+# Phase 3 only (requires Phase 1 and 2 to be completed)
+./infrastructure/scripts/deploy-all-phases.sh --phase 3 -b "bucket" -c "email"
 ```
 
 ### Method 2: Single Stack Deployment (For production deployments)

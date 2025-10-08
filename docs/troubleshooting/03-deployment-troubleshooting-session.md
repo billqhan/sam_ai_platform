@@ -198,12 +198,14 @@ aws lambda invoke --function-name $FunctionName --payload '{}' test-response.jso
 ## Files Created/Modified
 
 ### New Files
-- `infrastructure/scripts/package-lambda.ps1` - Lambda packaging script
-- `infrastructure/scripts/update-lambda-code.ps1` - Lambda update script
-- `docs/03-deployment-troubleshooting-session.md` - This documentation
+- `infrastructure/scripts/package-lambda.ps1` - Lambda packaging script (PowerShell)
+- `infrastructure/scripts/update-lambda-code.ps1` - Lambda update script (PowerShell)
+- `infrastructure/scripts/update-lambda-code.sh` - Lambda update script (Linux/macOS)
+- `docs/troubleshooting/03-deployment-troubleshooting-session.md` - This documentation
 
 ### Modified Files
-- Fixed `--no-deps` issue in packaging script
+- `infrastructure/scripts/package-lambda.ps1` - Fixed `--no-deps` issue in PowerShell packaging script
+- `infrastructure/scripts/package-lambdas.sh` - Fixed `--only-binary=:all:` issue in Linux packaging script
 
 ## Environment Details
 

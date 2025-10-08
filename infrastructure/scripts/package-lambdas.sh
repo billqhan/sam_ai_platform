@@ -161,8 +161,8 @@ package_function() {
     if [[ -f "$func_dir/requirements.txt" ]]; then
         print_status "Installing dependencies for $func_name..."
         
-        # Install dependencies to build directory
-        pip3 install -r "$func_dir/requirements.txt" -t "$build_func_dir" --no-cache-dir
+        # Install dependencies to build directory (Linux x86_64 compatible for Lambda)
+        pip3 install -r "$func_dir/requirements.txt" -t "$build_func_dir" --no-cache-dir --platform linux_x86_64
         
         if [[ $? -ne 0 ]]; then
             print_error "Failed to install dependencies for $func_name"

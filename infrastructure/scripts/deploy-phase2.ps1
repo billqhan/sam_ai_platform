@@ -96,7 +96,7 @@ $Parameters = @(
 $ParametersJson = $Parameters | ConvertTo-Json
 [System.IO.File]::WriteAllText($ParamsFile, $ParametersJson, [System.Text.UTF8Encoding]::new($false))
 
-$TemplateUrl = "https://$TemplatesBucket.s3.amazonaws.com/ai-rfp-response-agent/lambda-functions-simple.yaml"
+$TemplateUrl = "https://$TemplatesBucket.s3.amazonaws.com/ai-rfp-response-agent/lambda-functions.yaml"
 
 try {
     $null = aws cloudformation describe-stacks --stack-name $StackName --region $Region 2>$null

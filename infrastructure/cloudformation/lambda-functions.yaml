@@ -60,8 +60,14 @@ Resources:
                   - s3:PutObject
                   - s3:PutObjectAcl
                 Resource:
-                  - !Sub 'arn:aws:s3:::sam-data-in-${Environment}/*'
-                  - !Sub 'arn:aws:s3:::sam-download-files-logs-${Environment}/*'
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-data-in-${Environment}/*'
+                    - !Sub 'arn:aws:s3:::sam-data-in-${Environment}/*'
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-download-files-logs-${Environment}/*'
+                    - !Sub 'arn:aws:s3:::sam-download-files-logs-${Environment}/*'
         - PolicyName: CloudWatchMetrics
           PolicyDocument:
             Version: '2012-10-17'
@@ -93,12 +99,18 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetObject
-                Resource: !Sub 'arn:aws:s3:::sam-data-in-${Environment}/*'
+                Resource: !If 
+                  - HasBucketPrefix
+                  - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-data-in-${Environment}/*'
+                  - !Sub 'arn:aws:s3:::sam-data-in-${Environment}/*'
               - Effect: Allow
                 Action:
                   - s3:PutObject
                   - s3:PutObjectAcl
-                Resource: !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}/*'
+                Resource: !If 
+                  - HasBucketPrefix
+                  - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-extracted-json-resources-${Environment}/*'
+                  - !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}/*'
         - PolicyName: CloudWatchMetrics
           PolicyDocument:
             Version: '2012-10-17'
@@ -140,14 +152,23 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetObject
-                Resource: !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}/*'
+                Resource: !If 
+                  - HasBucketPrefix
+                  - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-extracted-json-resources-${Environment}/*'
+                  - !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}/*'
               - Effect: Allow
                 Action:
                   - s3:PutObject
                   - s3:PutObjectAcl
                 Resource:
-                  - !Sub 'arn:aws:s3:::sam-matching-out-sqs-${Environment}/*'
-                  - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}/*'
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-matching-out-sqs-${Environment}/*'
+                    - !Sub 'arn:aws:s3:::sam-matching-out-sqs-${Environment}/*'
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-matching-out-runs-${Environment}/*'
+                    - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}/*'
         - PolicyName: BedrockAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -188,12 +209,18 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetObject
-                Resource: !Sub 'arn:aws:s3:::sam-matching-out-sqs-${Environment}/*'
+                Resource: !If 
+                  - HasBucketPrefix
+                  - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-matching-out-sqs-${Environment}/*'
+                  - !Sub 'arn:aws:s3:::sam-matching-out-sqs-${Environment}/*'
               - Effect: Allow
                 Action:
                   - s3:PutObject
                   - s3:PutObjectAcl
-                Resource: !Sub 'arn:aws:s3:::sam-opportunity-responses-${Environment}/*'
+                Resource: !If 
+                  - HasBucketPrefix
+                  - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-opportunity-responses-${Environment}/*'
+                  - !Sub 'arn:aws:s3:::sam-opportunity-responses-${Environment}/*'
 
   SamMergeAndArchiveResultLogsRole:
     Type: AWS::IAM::Role
@@ -221,8 +248,14 @@ Resources:
                   - s3:DeleteObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}'
-                  - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}/*'
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-matching-out-runs-${Environment}'
+                    - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}'
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-matching-out-runs-${Environment}/*'
+                    - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}/*'
 
   SamProduceWebReportsRole:
     Type: AWS::IAM::Role
@@ -248,13 +281,22 @@ Resources:
                   - s3:GetObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}'
-                  - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}/*'
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-matching-out-runs-${Environment}'
+                    - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}'
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-matching-out-runs-${Environment}/*'
+                    - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}/*'
               - Effect: Allow
                 Action:
                   - s3:PutObject
                   - s3:PutObjectAcl
-                Resource: !Sub 'arn:aws:s3:::sam-website-${Environment}/*'
+                Resource: !If 
+                  - HasBucketPrefix
+                  - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-website-${Environment}/*'
+                  - !Sub 'arn:aws:s3:::sam-website-${Environment}/*'
 
   # Lambda Functions
   SamGovDailyDownloadFunction:
@@ -338,7 +380,7 @@ Resources:
               return {'statusCode': 200, 'body': 'Function placeholder'}
       MemorySize: 2048
       Timeout: 300  # 5 minutes
-      ReservedConcurrencyLimit: 10
+      ReservedConcurrentExecutions: 10
       TracingConfig:
         Mode: Active
       Environment:

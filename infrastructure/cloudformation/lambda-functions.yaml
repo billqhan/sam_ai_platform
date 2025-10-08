@@ -333,7 +333,7 @@ Resources:
           OVERRIDE_DATE_FORMAT: 'MM/DD/YYYY'
           OVERRIDE_POSTED_FROM: ''
           OVERRIDE_POSTED_TO: ''
-          _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-gov-daily-download'
+          X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-gov-daily-download'
 
   SamJsonProcessorFunction:
     Type: AWS::Lambda::Function
@@ -362,7 +362,7 @@ Resources:
             - !Sub '${BucketPrefix}-sam-extracted-json-resources-${Environment}'
             - !Sub 'sam-extracted-json-resources-${Environment}'
           MAX_CONCURRENT_DOWNLOADS: '10'
-          _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-json-processor'
+          X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-json-processor'
 
   SamSqsGenerateMatchReportsFunction:
     Type: AWS::Lambda::Function
@@ -379,8 +379,7 @@ Resources:
           def lambda_handler(event, context):
               return {'statusCode': 200, 'body': 'Function placeholder'}
       MemorySize: 2048
-      Timeout: 300  # 5 minutes
-      ReservedConcurrentExecutions: 10
+      Timeout: 30  # 30 seconds - must be less than SQS visibility timeout
       TracingConfig:
         Mode: Active
       Environment:
@@ -403,7 +402,7 @@ Resources:
           MODEL_ID_MATCH: 'anthropic.claude-3-sonnet-20240229-v1:0'
           DEBUG_MODE: 'true'
           PROCESS_DELAY_SECONDS: '60'
-          _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-sqs-generate-match-reports'
+          X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-sqs-generate-match-reports'
 
   SamProduceUserReportFunction:
     Type: AWS::Lambda::Function
@@ -431,7 +430,7 @@ Resources:
             - !Sub 'sam-opportunity-responses-${Environment}'
           COMPANY_NAME: !Ref CompanyName
           COMPANY_CONTACT: !Ref CompanyContact
-          _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-produce-user-report'
+          X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-produce-user-report'
 
   SamMergeAndArchiveResultLogsFunction:
     Type: AWS::Lambda::Function
@@ -460,7 +459,7 @@ Resources:
             - !Sub '${BucketPrefix}-sam-matching-out-runs-${Environment}'
             - !Sub 'sam-matching-out-runs-${Environment}'
           ARCHIVE_FOLDER: 'archive'
-          _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-merge-and-archive-result-logs'
+          X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-merge-and-archive-result-logs'
 
   SamProduceWebReportsFunction:
     Type: AWS::Lambda::Function
@@ -487,7 +486,7 @@ Resources:
             - !Sub '${BucketPrefix}-sam-website-${Environment}'
             - !Sub 'sam-website-${Environment}'
           DASHBOARD_PATH: 'dashboards/'
-          _X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-produce-web-reports'
+          X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-produce-web-reports'
 
   # Event Source Mappings
   SqsEventSourceMapping:

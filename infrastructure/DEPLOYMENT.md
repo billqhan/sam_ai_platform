@@ -34,7 +34,38 @@ Before deployment, gather:
 
 ## Deployment Methods
 
-### Method 1: Manual Deployment (Recommended for first-time setup)
+### Method 1: Phased Deployment (Recommended for development and troubleshooting)
+
+The phased deployment approach breaks the infrastructure into logical groups, making it faster to test and debug issues:
+
+- **Phase 1**: Core Infrastructure (S3 buckets, SQS queues) - ~2-3 minutes
+- **Phase 2**: Lambda Functions (simplified versions) - ~3-5 minutes  
+- **Phase 3**: Security & Monitoring (IAM policies, KMS keys) - ~2-3 minutes
+
+**Deploy All Phases:**
+```powershell
+.\infrastructure\scripts\deploy-all-phases.ps1 `
+  -Environment "dev" `
+  -TemplatesBucket "your-templates-bucket-name" `
+  -SamApiKey "your-sam-api-key" `
+  -CompanyName "Your Company Name" `
+  -CompanyContact "contact@yourcompany.com" `
+  -BucketPrefix "your-prefix"
+```
+
+**Deploy Individual Phases:**
+```powershell
+# Phase 1 only
+.\infrastructure\scripts\deploy-all-phases.ps1 -Phase 1 -TemplatesBucket "bucket" -SamApiKey "key" -CompanyName "Company" -CompanyContact "email"
+
+# Phase 2 only (requires Phase 1 to be completed)
+.\infrastructure\scripts\deploy-all-phases.ps1 -Phase 2 -TemplatesBucket "bucket" -SamApiKey "key" -CompanyName "Company" -CompanyContact "email"
+
+# Phase 3 only (requires Phase 1 and 2 to be completed)
+.\infrastructure\scripts\deploy-all-phases.ps1 -Phase 3 -TemplatesBucket "bucket" -CompanyContact "email"
+```
+
+### Method 2: Single Stack Deployment (For production deployments)
 
 #### Step 1: Prepare Templates Bucket
 

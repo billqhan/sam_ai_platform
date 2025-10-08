@@ -10,22 +10,39 @@ Parameters:
   SqsSamJsonMessagesQueueArn:
     Type: String
     Description: 'ARN of the SQS queue for JSON messages'
+  
+  BucketPrefix:
+    Type: String
+    Default: ''
+    Description: 'Optional prefix for S3 bucket names to avoid conflicts'
+
+Conditions:
+  HasBucketPrefix: !Not [!Equals [!Ref BucketPrefix, '']]
 
 Resources:
   # S3 Bucket Notification Configurations
   SamDataInBucketNotification:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'sam-data-in-${Environment}'
+      BucketName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-data-in-${Environment}'
+        - !Sub 'sam-data-in-${Environment}'
       NotificationConfiguration:
         LambdaConfigurations:
           - Event: s3:ObjectCreated:*
-            Function: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-json-processor-${Environment}'
+            Function: !If 
+              - HasBucketPrefix
+              - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${BucketPrefix}-sam-json-processor-${Environment}'
+              - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-json-processor-${Environment}'
 
   SamExtractedJsonResourcesBucketNotification:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'sam-extracted-json-resources-${Environment}'
+      BucketName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-extracted-json-resources-${Environment}'
+        - !Sub 'sam-extracted-json-resources-${Environment}'
       NotificationConfiguration:
         QueueConfigurations:
           - Event: s3:ObjectCreated:*
@@ -34,16 +51,25 @@ Resources:
   SamMatchingOutSqsBucketNotification:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'sam-matching-out-sqs-${Environment}'
+      BucketName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-matching-out-sqs-${Environment}'
+        - !Sub 'sam-matching-out-sqs-${Environment}'
       NotificationConfiguration:
         LambdaConfigurations:
           - Event: s3:ObjectCreated:*
-            Function: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-produce-user-report-${Environment}'
+            Function: !If 
+              - HasBucketPrefix
+              - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${BucketPrefix}-sam-produce-user-report-${Environment}'
+              - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-produce-user-report-${Environment}'
 
   SamMatchingOutRunsBucketNotification:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'sam-matching-out-runs-${Environment}'
+      BucketName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-matching-out-runs-${Environment}'
+        - !Sub 'sam-matching-out-runs-${Environment}'
       NotificationConfiguration:
         LambdaConfigurations:
           - Event: s3:ObjectCreated:*
@@ -52,7 +78,10 @@ Resources:
                 Rules:
                   - Name: prefix
                     Value: 'runs/2'
-            Function: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-produce-web-reports-${Environment}'
+            Function: !If 
+              - HasBucketPrefix
+              - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${BucketPrefix}-sam-produce-web-reports-${Environment}'
+              - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-produce-web-reports-${Environment}'
 
 Outputs:
   SamDataInBucketNotificationId:

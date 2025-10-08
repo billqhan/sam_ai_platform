@@ -31,6 +31,11 @@ Parameters:
     Type: String
     Default: 'cloudformation/'
     Description: 'Prefix for CloudFormation templates in the S3 bucket'
+  
+  BucketPrefix:
+    Type: String
+    Default: ''
+    Description: 'Optional prefix for S3 bucket names to avoid conflicts'
 
 Resources:
   # Main Infrastructure Stack (S3 Buckets, SQS)
@@ -43,6 +48,7 @@ Resources:
         SamApiKey: !Ref SamApiKey
         CompanyName: !Ref CompanyName
         CompanyContact: !Ref CompanyContact
+        BucketPrefix: !Ref BucketPrefix
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -61,6 +67,7 @@ Resources:
         CompanyName: !Ref CompanyName
         CompanyContact: !Ref CompanyContact
         SqsSamJsonMessagesQueueArn: !GetAtt MainInfrastructureStack.Outputs.SqsSamJsonMessagesQueueArn
+        BucketPrefix: !Ref BucketPrefix
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -77,6 +84,7 @@ Resources:
         Environment: !Ref Environment
         SamGovDailyDownloadFunctionArn: !GetAtt LambdaFunctionsStack.Outputs.SamGovDailyDownloadFunctionArn
         SamMergeAndArchiveResultLogsFunctionArn: !GetAtt LambdaFunctionsStack.Outputs.SamMergeAndArchiveResultLogsFunctionArn
+        BucketPrefix: !Ref BucketPrefix
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -92,6 +100,7 @@ Resources:
       Parameters:
         Environment: !Ref Environment
         SqsSamJsonMessagesQueueArn: !GetAtt MainInfrastructureStack.Outputs.SqsSamJsonMessagesQueueArn
+        BucketPrefix: !Ref BucketPrefix
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -106,6 +115,7 @@ Resources:
       TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}iam-security-policies.yaml'
       Parameters:
         Environment: !Ref Environment
+        BucketPrefix: !Ref BucketPrefix
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -121,6 +131,7 @@ Resources:
       Parameters:
         Environment: !Ref Environment
         AlertEmail: !Ref CompanyContact
+        BucketPrefix: !Ref BucketPrefix
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -139,6 +150,7 @@ Resources:
       Parameters:
         Environment: !Ref Environment
         SqsSamJsonMessagesQueueArn: !GetAtt MainInfrastructureStack.Outputs.SqsSamJsonMessagesQueueArn
+        BucketPrefix: !Ref BucketPrefix
       Tags:
         - Key: Environment
           Value: !Ref Environment

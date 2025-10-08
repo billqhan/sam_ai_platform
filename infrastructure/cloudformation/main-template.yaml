@@ -22,13 +22,24 @@ Parameters:
     Type: String
     Default: 'contact@yourcompany.com'
     Description: 'Company contact information'
+  
+  BucketPrefix:
+    Type: String
+    Default: ''
+    Description: 'Optional prefix for S3 bucket names to avoid conflicts'
+
+Conditions:
+  HasBucketPrefix: !Not [!Equals [!Ref BucketPrefix, '']]
 
 Resources:
   # S3 Buckets
   SamDataInBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'sam-data-in-${Environment}'
+      BucketName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-data-in-${Environment}'
+        - !Sub 'sam-data-in-${Environment}'
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
@@ -46,7 +57,10 @@ Resources:
   SamExtractedJsonResourcesBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'sam-extracted-json-resources-${Environment}'
+      BucketName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-extracted-json-resources-${Environment}'
+        - !Sub 'sam-extracted-json-resources-${Environment}'
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -67,7 +81,10 @@ Resources:
   SamMatchingOutSqsBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'sam-matching-out-sqs-${Environment}'
+      BucketName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-matching-out-sqs-${Environment}'
+        - !Sub 'sam-matching-out-sqs-${Environment}'
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -78,7 +95,10 @@ Resources:
   SamMatchingOutRunsBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'sam-matching-out-runs-${Environment}'
+      BucketName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-matching-out-runs-${Environment}'
+        - !Sub 'sam-matching-out-runs-${Environment}'
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
@@ -91,7 +111,10 @@ Resources:
   SamOpportunityResponsesBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'sam-opportunity-responses-${Environment}'
+      BucketName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-opportunity-responses-${Environment}'
+        - !Sub 'sam-opportunity-responses-${Environment}'
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
@@ -102,7 +125,10 @@ Resources:
   SamWebsiteBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'sam-website-${Environment}'
+      BucketName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-website-${Environment}'
+        - !Sub 'sam-website-${Environment}'
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -119,7 +145,10 @@ Resources:
   SamCompanyInfoBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'sam-company-info-${Environment}'
+      BucketName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-company-info-${Environment}'
+        - !Sub 'sam-company-info-${Environment}'
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
@@ -130,7 +159,10 @@ Resources:
   SamDownloadFilesLogsBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'sam-download-files-logs-${Environment}'
+      BucketName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-download-files-logs-${Environment}'
+        - !Sub 'sam-download-files-logs-${Environment}'
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -145,14 +177,20 @@ Resources:
   SqsSamJsonMessagesDeadLetterQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: !Sub 'sqs-sam-json-messages-dlq-${Environment}'
+      QueueName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sqs-sam-json-messages-dlq-${Environment}'
+        - !Sub 'sqs-sam-json-messages-dlq-${Environment}'
       MessageRetentionPeriod: 1209600  # 14 days
       KmsMasterKeyId: alias/aws/sqs
 
   SqsSamJsonMessagesQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: !Sub 'sqs-sam-json-messages-${Environment}'
+      QueueName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sqs-sam-json-messages-${Environment}'
+        - !Sub 'sqs-sam-json-messages-${Environment}'
       VisibilityTimeoutSeconds: 300  # 5 minutes
       MessageRetentionPeriod: 1209600  # 14 days
       RedrivePolicy:

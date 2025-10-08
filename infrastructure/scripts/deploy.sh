@@ -18,6 +18,7 @@ TEMPLATES_BUCKET=""
 SAM_API_KEY=""
 COMPANY_NAME=""
 COMPANY_CONTACT=""
+BUCKET_PREFIX=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -58,11 +59,12 @@ OPTIONS:
     -n, --company-name NAME         Company name for reports (required)
     -c, --company-contact EMAIL     Company contact email (required)
     -s, --stack-name STACK_NAME     Custom stack name prefix [default: ai-rfp-response-agent]
+    -p, --bucket-prefix PREFIX      Prefix for S3 bucket names to avoid conflicts [optional]
     -h, --help                      Show this help message
 
 EXAMPLES:
     $0 -e dev -b my-templates-bucket -k "your-api-key" -n "My Company" -c "contact@company.com"
-    $0 --environment prod --bucket prod-templates --api-key "key" --company-name "Company" --company-contact "email@company.com"
+    $0 --environment prod --bucket prod-templates --api-key "key" --company-name "Company" --company-contact "email@company.com" --bucket-prefix "mycompany"
 
 EOF
 }
@@ -96,6 +98,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -s|--stack-name)
             STACK_NAME_PREFIX="$2"
+            shift 2
+            ;;
+        -p|--bucket-prefix)
+            BUCKET_PREFIX="$2"
             shift 2
             ;;
         -h|--help)
@@ -147,6 +153,7 @@ echo "  Stack Name: $STACK_NAME"
 echo "  Templates Bucket: $TEMPLATES_BUCKET"
 echo "  Company Name: $COMPANY_NAME"
 echo "  Company Contact: $COMPANY_CONTACT"
+echo "  Bucket Prefix: $BUCKET_PREFIX"
 echo ""
 
 # Check if AWS CLI is installed and configured
@@ -210,6 +217,10 @@ cat > "$PARAMS_FILE" << EOF
   {
     "ParameterKey": "TemplatesBucketPrefix",
     "ParameterValue": "ai-rfp-response-agent/"
+  },
+  {
+    "ParameterKey": "BucketPrefix",
+    "ParameterValue": "$BUCKET_PREFIX"
   }
 ]
 EOF

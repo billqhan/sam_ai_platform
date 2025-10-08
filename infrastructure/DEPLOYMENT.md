@@ -30,6 +30,7 @@ Before deployment, gather:
 - **Company Name** - For report templates
 - **Company Contact Email** - For alerts and templates
 - **S3 Bucket Name** - For storing CloudFormation templates
+- **Bucket Prefix** (Optional) - Prefix for S3 bucket names to avoid conflicts
 
 ## Deployment Methods
 
@@ -49,6 +50,8 @@ aws s3api put-bucket-versioning \
 
 #### Step 2: Deploy Infrastructure
 
+**Note:** Use the `-p` (Linux/macOS) or `-BucketPrefix` (Windows) parameter to add a prefix to all S3 bucket and SQS queue names. This helps avoid naming conflicts if you have multiple deployments or existing resources with similar names.
+
 **Linux/macOS:**
 ```bash
 chmod +x infrastructure/scripts/deploy.sh
@@ -57,7 +60,8 @@ chmod +x infrastructure/scripts/deploy.sh
   -b your-templates-bucket-name \
   -k "your-sam-api-key" \
   -n "Your Company Name" \
-  -c "contact@yourcompany.com"
+  -c "contact@yourcompany.com" \
+  -p "your-prefix"
 ```
 
 **Windows PowerShell:**
@@ -67,7 +71,8 @@ chmod +x infrastructure/scripts/deploy.sh
   -TemplatesBucket "your-templates-bucket-name" `
   -SamApiKey "your-sam-api-key" `
   -CompanyName "Your Company Name" `
-  -CompanyContact "contact@yourcompany.com"
+  -CompanyContact "contact@yourcompany.com" `
+  -BucketPrefix "your-prefix"
 ```
 
 #### Step 3: Post-Deployment Configuration

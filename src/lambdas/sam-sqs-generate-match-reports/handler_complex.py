@@ -117,7 +117,7 @@ class OpportunityMatchProcessor:
                     processing_time = timer.start_time and (datetime.utcnow() - timer.start_time).total_seconds()
                     
                     logger.info("Opportunity processing completed successfully",
-                               opportunity_id=opportunity_data.get('opportunity_id'),
+                               opportunity_id=opportunity_data.get('solicitationNumber', opportunity_data.get('opportunity_id')),
                                match_score=match_result.get('match_score'),
                                is_match=match_result.get('is_match'),
                                processing_time_seconds=processing_time)
@@ -138,7 +138,7 @@ class OpportunityMatchProcessor:
                     
                     return {
                         'success': True,
-                        'opportunity_id': opportunity_data.get('opportunity_id'),
+                        'opportunity_id': opportunity_data.get('solicitationNumber', opportunity_data.get('opportunity_id')),
                         'match_score': match_result.get('match_score'),
                         'processing_time_seconds': processing_time
                     }
@@ -401,13 +401,13 @@ This is a fallback summary due to AI processing failure. Manual review recommend
             match_result['opportunity_summary'] = {
                 'title': opportunity_data.get('title', 'Unknown Title'),
                 'value': opportunity_data.get('award_amount', opportunity_data.get('estimated_value', 'Not specified')),
-                'deadline': opportunity_data.get('response_deadline', opportunity_data.get('due_date', 'Not specified')),
-                'naics_codes': opportunity_data.get('naics_codes', [])
+                'deadline': opportunity_data.get('responseDeadLine', opportunity_data.get('response_deadline', opportunity_data.get('due_date', 'Not specified'))),
+                'naics_codes': opportunity_data.get('naicsCodes', opportunity_data.get('naics_codes', []))
             }
             
             # Add processing metadata
             match_result['processed_timestamp'] = datetime.now().isoformat()
-            match_result['solicitation_id'] = opportunity_data.get('solicitation_number', opportunity_data.get('opportunity_id', 'unknown'))
+            match_result['solicitation_id'] = opportunity_data.get('solicitationNumber', opportunity_data.get('solicitation_number', opportunity_data.get('opportunity_id', 'unknown')))
             match_result['match_threshold'] = self.match_threshold
             
             logger.info("Company match calculated successfully",
@@ -448,11 +448,11 @@ This is a fallback summary due to AI processing failure. Manual review recommend
                 'opportunity_summary': {
                     'title': opportunity_data.get('title', 'Unknown Title'),
                     'value': opportunity_data.get('award_amount', opportunity_data.get('estimated_value', 'Not specified')),
-                    'deadline': opportunity_data.get('response_deadline', opportunity_data.get('due_date', 'Not specified')),
-                    'naics_codes': opportunity_data.get('naics_codes', [])
+                    'deadline': opportunity_data.get('responseDeadLine', opportunity_data.get('response_deadline', opportunity_data.get('due_date', 'Not specified'))),
+                    'naics_codes': opportunity_data.get('naicsCodes', opportunity_data.get('naics_codes', []))
                 },
                 'processed_timestamp': datetime.now().isoformat(),
-                'solicitation_id': opportunity_data.get('solicitation_number', opportunity_data.get('opportunity_id', 'unknown')),
+                'solicitation_id': opportunity_data.get('solicitationNumber', opportunity_data.get('solicitation_number', opportunity_data.get('opportunity_id', 'unknown'))),
                 'match_threshold': self.match_threshold
             }
             

@@ -19,7 +19,7 @@ class DashboardGenerator:
     
     def generate_html(self, daily_stats: DailyStats) -> str:
         """
-        Generate enhanced HTML dashboard from daily statistics with Bootstrap styling.
+        Generate rich HTML dashboard matching external version exactly.
         
         Args:
             daily_stats: Aggregated daily statistics
@@ -33,18 +33,13 @@ class DashboardGenerator:
             # Format date for display
             formatted_date = self._format_date_for_display(daily_stats.date)
             
-            # Generate dashboard sections
-            summary_section = self._generate_enhanced_summary_section(daily_stats)
-            top_matches_section = self._generate_enhanced_top_matches_section(daily_stats)
+            # Group opportunities by confidence score
+            from data_aggregator import DataAggregator
+            aggregator = DataAggregator()
+            grouped = aggregator.group_by_confidence(daily_stats.all_records)
             
-            # Replace template placeholders
-            html_content = self.template.format(
-                date=formatted_date,
-                date_prefix=daily_stats.date,
-                summary_section=summary_section,
-                top_matches_section=top_matches_section,
-                last_updated=datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
-            )
+            # Generate rich dashboard with confidence groups
+            html_content = self._render_rich_dashboard(formatted_date, daily_stats, grouped)
             
             logger.info(f"HTML dashboard generated successfully", 
                        date=daily_stats.date, 
@@ -258,6 +253,255 @@ class DashboardGenerator:
 </body>
 </html>"""
     
+    def _render_rich_dashboard(self, formatted_date: str, stats: DailyStats, grouped: Dict[str, List[Dict[str, Any]]]) -> str:
+        """Render rich Bootstrap dashboard with confidence groups matching external version exactly."""
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+        html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Opportunity Summary {stats.date}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    .md-content h3 {{ font-size: 1.2rem; margin-top: 1rem; margin-bottom: 0.5rem; }}
+    .md-content h4 {{ font-size: 1.1rem; margin-top: 0.8rem; margin-bottom: 0.4rem; }}
+    .md-content p {{ margin-bottom: 0.8rem; }}
+    .md-content ul {{ margin-bottom: 0.8rem; }}
+    .citation-card {{ background-color: #f8f9fa; border-left: 3px solid #0d6efd; }}
+    .past-performance-badge {{ font-size: 0.9rem; }}
+  </style>
+</head>
+<body class="bg-light">
+<div class="container-fluid py-4">
+
+  <!-- Header -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card text-center text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+        <div class="card-body">
+          <h1 class="card-title mb-3"><i class="bi bi-clipboard-data me-2"></i> Opportunity Summary {stats.date}</h1>
+          <div class="row">
+            <div class="col-md-3"><h3>{stats.total_opportunities}</h3><p>Total</p></div>
+            <div class="col-md-3"><h3>{stats.matches_found}</h3><p>Matched</p></div>
+            <div class="col-md-3"><h3>{stats.average_match_score:.2f}</h3><p>Avg Score</p></div>
+            <div class="col-md-3"><h3>{stats.agencies}</h3><p>Agencies</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+"""
+
+        # Confidence groups
+        confidence_order = [
+            "1.0 (Perfect match)",
+            "0.9 (Outstanding match)",
+            "0.8 (Strong match)",
+            "0.7 (Good subject matter match)",
+            "0.6 (Decent subject matter match)",
+            "0.5 (Partial technical or conceptual match)",
+            "0.3 (Weak or minimal match)",
+            "0.0 (No demonstrated capability)"
+        ]
+
+        first_group = True
+        for idx, bucket in enumerate(confidence_order):
+            opps = grouped.get(bucket, [])
+            if not opps:
+                continue
+            
+            collapse_id = f"collapse-{idx}"
+            collapse_class = "collapse show" if first_group else "collapse"
+            first_group = False
+            
+            html += f"""
+  <div class="card mb-3">
+    <div class="card-header bg-primary text-white d-flex justify-content-between" 
+         data-bs-toggle="collapse" data-bs-target="#{collapse_id}" style="cursor:pointer;">
+      <h3 class="mb-0">{bucket} 
+        <span class="badge bg-light text-dark ms-2">{len(opps)} opportunities</span>
+      </h3>
+      <i class="bi bi-chevron-down"></i>
+    </div>
+    <div id="{collapse_id}" class="{collapse_class}">
+      <div class="card-body">
+        <div class="row">"""
+
+            for r in opps:
+                html += self._render_opportunity_card(r, idx)
+
+            html += "</div></div></div></div>"
+
+        # Footer
+        html += f"""
+<footer class="mt-5 py-4 border-top">
+  <div class="container-fluid text-center text-muted">
+    <p>Generated {timestamp} | Opportunity Dashboard v2.0</p>
+  </div>
+</footer>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Marked.js for Markdown Rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+  // Render markdown content in .md-content divs
+  document.querySelectorAll('.md-content').forEach(el => {{
+    const raw = el.textContent || el.innerText;
+    el.innerHTML = marked.parse(raw);
+  }});
+</script>
+
+</div>
+</body></html>
+"""
+        return html
+
+    def _render_opportunity_card(self, r: Dict[str, Any], idx: int) -> str:
+        """Render individual opportunity card with all details."""
+        title = self._escape_html(r.get('title', 'No title'))
+        sol = self._escape_html(r.get('solicitation_id', ''))
+        agency = self._escape_html(r.get('agency', ''))
+        score = r.get('match_score', 0.0)
+        matched = r.get('matched', False)
+        rationale = self._escape_html(r.get('rationale', ''))
+        desc = r.get('enhanced_description', '')
+        skills_req = r.get('opportunity_required_skills', [])
+        skills_comp = r.get('company_skills', [])
+        past_perf = r.get('past_performance', [])
+        citations = r.get('citations', [])
+        
+        # Metadata
+        posted_date = self._format_date(r.get('timestamp', ''))
+        deadline = self._format_date(r.get('deadline', ''))
+        opp_type = self._escape_html(r.get('type', 'Not specified'))
+        
+        # Handle POC data
+        poc_data = r.get('pointOfContact', {})
+        if isinstance(poc_data, dict):
+            poc_name = self._escape_html(poc_data.get('fullName', 'Not specified'))
+            poc_email = self._escape_html(poc_data.get('email', ''))
+        else:
+            poc_name = 'Not specified'
+            poc_email = ''
+
+        match_badge = ('<span class="badge bg-success">Matched</span>' 
+                      if matched else '<span class="badge bg-danger">Not Matched</span>')
+
+        skills_req_html = "".join(f"<li>{self._escape_html(s)}</li>" for s in skills_req[:8])
+        if len(skills_req) > 8:
+            skills_req_html += f"<li>...and {len(skills_req)-8} more</li>"
+
+        skills_comp_html = "".join(f"<li>{self._escape_html(s)}</li>" for s in skills_comp[:8])
+        if len(skills_comp) > 8:
+            skills_comp_html += f"<li>...and {len(skills_comp)-8} more</li>"
+        
+        # Past Performance badges
+        past_perf_html = ""
+        if past_perf:
+            past_perf_badges = "".join(
+                f'<span class="badge past-performance-badge text-bg-success">{self._escape_html(p)}</span> '
+                for p in past_perf
+            )
+            past_perf_html = f"""
+              <div class="mb-3">
+                <h6><i class="bi bi-trophy me-1"></i>Past Performance</h6>
+                <div class="d-flex flex-wrap gap-2">
+                  {past_perf_badges}
+                </div>
+              </div>"""
+        
+        # Citations accordion
+        citations_html = ""
+        if citations:
+            sorted_citations = self._sort_citations_by_doc_number(citations)
+            citations_accordion = ""
+            for cit_idx, citation in enumerate(sorted_citations):
+                doc_title = self._escape_html(citation.get('document_title', 'Unknown'))
+                excerpt = self._escape_html(citation.get('excerpt', ''))
+                
+                # Extract filename from kb_retrieval_results if available
+                filename = ""
+                kb_results = r.get('kb_retrieval_results', [])
+                for kb in kb_results:
+                    if kb.get('title') == citation.get('document_title'):
+                        source_uri = kb.get('source', '')
+                        filename = self._extract_filename_from_uri(source_uri)
+                        break
+                
+                filename_display = f' <span class="text-muted ms-2">({filename})</span>' if filename else ''
+                
+                citations_accordion += f"""
+                <div class="accordion-item">
+                  <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#citation{idx}-{cit_idx}">
+                      <strong>{doc_title}</strong>{filename_display}
+                    </button>
+                  </h2>
+                  <div id="citation{idx}-{cit_idx}" class="accordion-collapse collapse" data-bs-parent="#citationsAccordion{idx}">
+                    <div class="accordion-body citation-card">
+                      <p class="mb-0"><em>"{excerpt}"</em></p>
+                    </div>
+                  </div>
+                </div>"""
+            
+            citations_html = f"""
+              <h6 class="mt-3"><i class="bi bi-journal-text me-1"></i>Supporting Evidence from Company Documents</h6>
+              <div class="accordion mb-3" id="citationsAccordion{idx}">
+                {citations_accordion}
+              </div>"""
+
+        return f"""
+          <div class="col-12 mb-3">
+            <div class="card opportunity-card p-3 shadow-sm">
+              <h4>{title} <small class="text-muted">({sol})</small></h4>
+              
+              <!-- Metadata Badges -->
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge text-bg-secondary"><i class="bi bi-calendar-event me-1"></i>Posted: {posted_date}</span>
+                <span class="badge text-bg-danger"><i class="bi bi-clock me-1"></i>Deadline: {deadline}</span>
+                <span class="badge text-bg-light text-dark border"><i class="bi bi-file-text me-1"></i>Type: {opp_type}</span>
+                <span class="badge text-bg-info"><i class="bi bi-person me-1"></i>POC: {poc_name}{' (' + poc_email + ')' if poc_email else ''}</span>
+              </div>
+              
+              <p><strong>Agency:</strong> 
+                <span class="d-inline-block text-truncate align-bottom" style="max-width: 700px;" title="{agency}">
+                  {agency}
+                </span>
+              </p>
+              <p><strong>Score:</strong> {score:.2f} {match_badge}</p>
+              
+              <h6 class="mt-3"><i class="bi bi-file-earmark-text me-1"></i>Description</h6>
+              <div class="md-content border-start border-3 border-primary ps-3 mb-3">{desc}</div>
+              
+              <h6 class="mt-3"><i class="bi bi-lightbulb me-1"></i>Rationale</h6>
+              <div class="border-start border-3 border-warning ps-3 mb-3">
+                <p>{rationale}</p>
+              </div>
+              
+              <div class="row mb-3">
+                <div class="col-md-6">
+                  <h6 class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Required Skills</h6>
+                  <ul>{skills_req_html}</ul>
+                </div>
+                <div class="col-md-6">
+                  <h6 class="text-success"><i class="bi bi-check-circle me-1"></i>Company Skills</h6>
+                  <ul>{skills_comp_html}</ul>
+                </div>
+              </div>
+              
+              {past_perf_html}
+              
+              {citations_html}
+              
+              <a href="{r.get('uiLink','')}" target="_blank" class="btn btn-primary mt-2"><i class="bi bi-box-arrow-up-right me-1"></i>View Solicitation on SAM.gov</a>
+            </div>
+          </div>"""
+
     def _generate_error_page(self, error_message: str) -> str:
         """Generate a simple error page."""
         return f"""<!DOCTYPE html>
@@ -377,11 +621,37 @@ class DashboardGenerator:
         """Escape HTML special characters."""
         if not text:
             return ''
-        return (text.replace('&', '&amp;')
+        return (str(text).replace('&', '&amp;')
                    .replace('<', '&lt;')
                    .replace('>', '&gt;')
                    .replace('"', '&quot;')
                    .replace("'", '&#x27;'))
+    
+    def _format_date(self, date_str: str) -> str:
+        """Format ISO date string to readable format."""
+        if not date_str:
+            return "Not specified"
+        try:
+            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            return dt.strftime("%b %d, %Y %H:%M %Z")
+        except:
+            return date_str
+    
+    def _extract_filename_from_uri(self, uri: str) -> str:
+        """Extract filename from S3 URI."""
+        if not uri:
+            return ""
+        return uri.split("/")[-1]
+    
+    def _sort_citations_by_doc_number(self, citations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Sort citations by document number."""
+        import re
+        def extract_number(citation):
+            title = citation.get('document_title', '')
+            match = re.search(r'Document (\d+)', title)
+            return int(match.group(1)) if match else 999
+        
+        return sorted(citations, key=extract_number)
     
     def _format_duration(self, seconds: float) -> str:
         """Format duration in human-readable format."""

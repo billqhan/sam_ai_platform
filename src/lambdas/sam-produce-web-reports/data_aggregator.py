@@ -26,6 +26,8 @@ class DailyStats:
     hourly_distribution: Dict[str, int] = field(default_factory=dict)
     average_match_score: float = 0.0
     success_rate: float = 0.0
+    agencies: int = 0
+    all_records: List[Dict[str, Any]] = field(default_factory=list)
 
 @dataclass
 class OpportunityMatch:
@@ -163,6 +165,7 @@ class DataAggregator:
     def _aggregate_records(self, daily_stats: DailyStats, records: List[Dict[str, Any]]):
         """
         Aggregate flattened opportunity records into daily statistics.
+        Store complete records for rich dashboard display.
         
         Args:
             daily_stats: DailyStats object to update
@@ -171,6 +174,7 @@ class DataAggregator:
         try:
             all_matches = []
             match_scores = []
+            agencies = set()
             
             # Process each record
             for record in records:
@@ -187,21 +191,42 @@ class DataAggregator:
                 else:
                     daily_stats.no_matches += 1
                 
+                # Track agencies
+                agency = record.get('fullParentPathName')
+                if agency:
+                    agencies.add(agency)
+                
                 # Get match score
                 score = record.get('score', 0.0)
                 if isinstance(score, (int, float)):
                     match_scores.append(float(score))
                 
-                # Collect ALL opportunities processed that day (not just matched ones)
-                opportunity_match = OpportunityMatch(
-                    solicitation_id=record.get('solicitationNumber', ''),
-                    match_score=float(score) if isinstance(score, (int, float)) else 0.0,
-                    title=record.get('title', ''),
-                    timestamp=record.get('postedDate', ''),
-                    value=record.get('awardAmount', ''),
-                    deadline=record.get('responseDeadLine', '')
-                )
+                # Store complete record data for rich display
+                opportunity_match = {
+                    'solicitation_id': record.get('solicitationNumber', ''),
+                    'match_score': float(score) if isinstance(score, (int, float)) else 0.0,
+                    'title': record.get('title', ''),
+                    'timestamp': record.get('postedDate', ''),
+                    'value': record.get('awardAmount', ''),
+                    'deadline': record.get('responseDeadLine', ''),
+                    'matched': matched,
+                    'agency': record.get('fullParentPathName', ''),
+                    'rationale': record.get('rationale', ''),
+                    'enhanced_description': record.get('enhanced_description', ''),
+                    'opportunity_required_skills': record.get('opportunity_required_skills', []),
+                    'company_skills': record.get('company_skills', []),
+                    'past_performance': record.get('past_performance', []),
+                    'citations': record.get('citations', []),
+                    'type': record.get('type', ''),
+                    'pointOfContact': record.get('pointOfContact', {}),
+                    'uiLink': record.get('uiLink', ''),
+                    'kb_retrieval_results': record.get('kb_retrieval_results', [])
+                }
                 all_matches.append(opportunity_match)
+            
+            # Store complete records and calculate stats
+            daily_stats.all_records = all_matches
+            daily_stats.agencies = len(agencies)
             
             # Calculate derived statistics
             self._calculate_derived_stats(daily_stats, all_matches, match_scores)
@@ -216,8 +241,50 @@ class DataAggregator:
         """
         pass
     
+    def group_by_confidence(self, records: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Group opportunities by confidence score ranges.
+        
+        Args:
+            records: List of opportunity records
+            
+        Returns:
+            Dictionary with confidence ranges as keys and opportunity lists as values
+        """
+        groups = {
+            "1.0 (Perfect match)": [],
+            "0.9 (Outstanding match)": [],
+            "0.8 (Strong match)": [],
+            "0.7 (Good subject matter match)": [],
+            "0.6 (Decent subject matter match)": [],
+            "0.5 (Partial technical or conceptual match)": [],
+            "0.3 (Weak or minimal match)": [],
+            "0.0 (No demonstrated capability)": []
+        }
+        
+        for r in records:
+            s = r.get("match_score", 0.0)
+            if s == 1.0: 
+                groups["1.0 (Perfect match)"].append(r)
+            elif s == 0.9: 
+                groups["0.9 (Outstanding match)"].append(r)
+            elif s == 0.8: 
+                groups["0.8 (Strong match)"].append(r)
+            elif s == 0.7: 
+                groups["0.7 (Good subject matter match)"].append(r)
+            elif s == 0.6: 
+                groups["0.6 (Decent subject matter match)"].append(r)
+            elif s == 0.5: 
+                groups["0.5 (Partial technical or conceptual match)"].append(r)
+            elif s == 0.3: 
+                groups["0.3 (Weak or minimal match)"].append(r)
+            elif s == 0.0: 
+                groups["0.0 (No demonstrated capability)"].append(r)
+        
+        return groups
+
     def _calculate_derived_stats(self, daily_stats: DailyStats, 
-                                all_matches: List[OpportunityMatch], 
+                                all_matches: List[Dict[str, Any]], 
                                 match_scores: List[float]):
         """
         Calculate derived statistics from aggregated data.
@@ -238,19 +305,8 @@ class DataAggregator:
             if match_scores:
                 daily_stats.average_match_score = sum(match_scores) / len(match_scores)
             
-            # Get top matches (sorted by score, limit to top 10)
-            sorted_matches = sorted(all_matches, key=lambda x: x.match_score, reverse=True)
-            daily_stats.top_matches = [
-                {
-                    'solicitation_id': match.solicitation_id,
-                    'match_score': match.match_score,
-                    'title': match.title,
-                    'timestamp': match.timestamp,
-                    'value': match.value,
-                    'deadline': match.deadline
-                }
-                for match in sorted_matches[:10]
-            ]
+            # Store all matches for rich display (sorted by score)
+            daily_stats.top_matches = sorted(all_matches, key=lambda x: x.get('match_score', 0), reverse=True)
             
             # Calculate match score distribution
             daily_stats.match_score_distribution = self._calculate_score_distribution(match_scores)

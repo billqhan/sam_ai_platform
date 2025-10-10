@@ -44,7 +44,22 @@ We have successfully deployed a comprehensive fix for the LLM match report gener
 - **Cause**: Missing logging methods for Knowledge Base operations
 - **✅ Fixed**: Added comprehensive KB logging methods
 
-### 5. ✅ Knowledge Base Configuration
+### 5. ❌ Generic Citations Problem (v8)
+**Original Issue**: Citations contained generic placeholders like "Unknown Source"
+- **Cause**: Citations not mapped to actual Knowledge Base content
+- **✅ Fixed**: Citations now reference actual document filenames and content excerpts
+
+### 6. ❌ Output Structure Issues (v8)
+**Original Issue**: Runs output in wrong folder with incomplete schema
+- **Cause**: Output structure didn't match requirements
+- **✅ Fixed**: Moved to `runs/raw/` folder with enhanced schema
+
+### 7. ❌ Null Safety AttributeError (v9)
+**Original Issue**: `AttributeError: 'NoneType' object has no attribute 'get'`
+- **Cause**: Code assumed `placeOfPerformance` would always be a dictionary
+- **✅ Fixed**: Added comprehensive null checks for nested dictionary access
+
+### 8. ✅ Knowledge Base Configuration
 **Discovered**: `KNOWLEDGE_BASE_ID` is now configured (`BGPVYMKB44`)
 - System can now actually query company information
 - Should provide real match assessments when company data is available
@@ -105,7 +120,9 @@ We have successfully deployed a comprehensive fix for the LLM match report gener
 
 | Version | Fix | Status |
 |---------|-----|--------|
-| v7 | ErrorHandler methods fix | ✅ **CURRENT** |
+| v9 | Null safety fix for placeOfPerformance | ✅ **CURRENT** |
+| v8 | Citations & output structure fix | ✅ Deployed |
+| v7 | ErrorHandler methods fix | ✅ Deployed |
 | v6 | Converse API + unpacking fix | ✅ Deployed |
 | v5 | Hallucination prevention | ✅ Deployed |
 | v4 | Attachments processing | ✅ Deployed |
@@ -129,7 +146,10 @@ The system has been tested with the same opportunity (`36C24526Q0057`) that prev
 2. **API Compatibility**: Uses modern Bedrock Converse API
 3. **Error Resilience**: Comprehensive error handling and logging
 4. **Knowledge Base Ready**: Configured to use actual company data
-5. **Production Ready**: Robust, scalable, and maintainable
+5. **Meaningful Citations**: References actual KB document content
+6. **Proper Output Structure**: Organized in `runs/raw/` with enhanced schema
+7. **Data Quality Resilience**: Handles null values and missing fields gracefully
+8. **Production Ready**: Robust, scalable, and maintainable
 
 ## 🔮 Next Steps
 

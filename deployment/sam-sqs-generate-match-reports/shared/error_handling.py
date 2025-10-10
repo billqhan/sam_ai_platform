@@ -561,3 +561,92 @@ class ErrorHandler:
             if file_size:
                 self.logger.debug(f"  Size: {file_size} bytes ({file_size/1024:.1f} KB)")
             self.logger.debug(f"  Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}")
+    
+    def log_knowledge_base_request(self, query_text: str, knowledge_base_id: str, 
+                                  request_params: dict = None):
+        """
+        Log Knowledge Base request details.
+        
+        Args:
+            query_text: The query text being sent
+            knowledge_base_id: The knowledge base ID
+            request_params: Additional request parameters
+        """
+        self.logger.info(f"🔍 KB REQUEST: {knowledge_base_id} (query: {len(query_text)} chars)")
+        
+        if self.debug_mode:
+            self.logger.debug(f"🔍 KB REQUEST DETAILS:")
+            self.logger.debug(f"  Knowledge Base ID: {knowledge_base_id}")
+            self.logger.debug(f"  Query length: {len(query_text)} characters")
+            self.logger.debug(f"  Query preview: {query_text[:100]}...")
+            self.logger.debug(f"  Request timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}")
+            
+            if request_params:
+                safe_params = {
+                    'numberOfResults': request_params.get('numberOfResults'),
+                    'retrievalConfiguration': request_params.get('retrievalConfiguration')
+                }
+                self.logger.debug(f"  Parameters: {safe_params}")
+    
+    def log_knowledge_base_response(self, knowledge_base_id: str, results_count: int, 
+                                   processing_time: float, response_metadata: dict = None):
+        """
+        Log Knowledge Base response details.
+        
+        Args:
+            knowledge_base_id: The knowledge base ID
+            results_count: Number of results returned
+            processing_time: Time taken for the request
+            response_metadata: Additional response metadata
+        """
+        self.logger.info(f"✅ KB RESPONSE: {knowledge_base_id} ({results_count} results, {processing_time:.2f}s)")
+        
+        if self.debug_mode:
+            self.logger.debug(f"🔍 KB RESPONSE DETAILS:")
+            self.logger.debug(f"  Knowledge Base ID: {knowledge_base_id}")
+            self.logger.debug(f"  Results count: {results_count}")
+            self.logger.debug(f"  Processing time: {processing_time:.2f}s")
+            self.logger.debug(f"  Response timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}")
+            
+            if response_metadata:
+                safe_metadata = {
+                    'retrievalResults': response_metadata.get('retrievalResults'),
+                    'nextToken': response_metadata.get('nextToken')
+                }
+                self.logger.debug(f"  Metadata: {safe_metadata}")
+    
+    def log_knowledge_base_error(self, opportunity_id: str, error: Exception, 
+                                query_text: str, knowledge_base_id: str):
+        """
+        Log Knowledge Base query errors with comprehensive details.
+        
+        Args:
+            opportunity_id: The opportunity ID being processed
+            error: The exception that occurred
+            query_text: The query that failed
+            knowledge_base_id: The knowledge base ID
+        """
+        error_category = self.categorize_error(error)
+        
+        self.logger.error(f"❌ KB QUERY ERROR: {knowledge_base_id}")
+        self.logger.error(f"🔍 Opportunity ID: {opportunity_id}")
+        self.logger.error(f"📂 Error Category: {error_category}")
+        self.logger.error(f"💥 Error: {str(error)}")
+        self.logger.error(f"🔍 Query preview: {query_text[:200]}...")
+        
+        # Log AWS-specific error details
+        if hasattr(error, 'response') and 'Error' in error.response:
+            aws_error = error.response['Error']
+            self.logger.error(f"☁️  AWS KB Error Code: {aws_error.get('Code')}")
+            self.logger.error(f"☁️  AWS KB Error Message: {aws_error.get('Message')}")
+            
+            # Log specific KB error guidance
+            if aws_error.get('Code') == 'ResourceNotFoundException':
+                self.logger.error(f"🔍 Knowledge Base not found: {knowledge_base_id}")
+            elif aws_error.get('Code') == 'ValidationException':
+                self.logger.error(f"🔍 Invalid query or parameters")
+            elif aws_error.get('Code') == 'ThrottlingException':
+                self.logger.error(f"🔍 Knowledge Base query throttled")
+        
+        if self.debug_mode:
+            self.logger.error(f"📚 Stack trace:\n{traceback.format_exc()}")

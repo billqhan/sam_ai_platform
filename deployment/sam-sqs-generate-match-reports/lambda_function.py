@@ -615,8 +615,8 @@ def create_enhanced_match_result(opportunity_data: Dict[str, Any],
         logger.warning("Enhanced description missing structured format, using fallback")
         enhanced_description = format_structured_description(enhanced_description, opportunity_data)
     
-    # Validate and format citations
-    citations = validate_and_format_citations(company_match_result.get('citations', []))
+    # Use citations directly from company_match_result (already enhanced by LLM processing)
+    citations = company_match_result.get('citations', [])
     
     # Validate and format kb_retrieval_results
     kb_retrieval_results = validate_and_format_kb_results(company_match_result.get('kb_retrieval_results', []))
@@ -732,21 +732,11 @@ EVALUATION CRITERIA:
 
 def validate_and_format_citations(citations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Validate and format citations to ensure proper structure.
+    Legacy function - now citations are handled directly by LLM processing.
+    Kept for backward compatibility but should not be used.
     """
-    formatted_citations = []
-    
-    for citation in citations:
-        if isinstance(citation, dict):
-            formatted_citation = {
-                'source': citation.get('source', 'Unknown Source'),
-                'content': citation.get('content', ''),
-                'relevance_score': float(citation.get('relevance_score', 0.0)),
-                'metadata': citation.get('metadata', {})
-            }
-            formatted_citations.append(formatted_citation)
-    
-    return formatted_citations
+    # Return citations as-is since they're now properly formatted by LLM processing
+    return citations if isinstance(citations, list) else []
 
 
 def validate_and_format_kb_results(kb_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

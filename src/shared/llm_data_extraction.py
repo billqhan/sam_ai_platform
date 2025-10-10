@@ -1161,17 +1161,10 @@ CRITICAL INSTRUCTIONS:
                 if not isinstance(match_result.get(field), list):
                     match_result[field] = []
             
-            # Validate citations format
-            validated_citations = []
-            for citation in match_result.get('citations', []):
-                if isinstance(citation, dict):
-                    validated_citation = {
-                        'document_title': citation.get('document_title', 'Unknown Document'),
-                        'section_or_page': citation.get('section_or_page', 'Unknown Section'),
-                        'excerpt': citation.get('excerpt', 'No excerpt provided')
-                    }
-                    validated_citations.append(validated_citation)
-            
+            # Validate and enhance citations format using KB results
+            validated_citations = self._create_citations_from_kb_results(
+                match_result.get('citations', []), kb_results
+            )
             match_result['citations'] = validated_citations
             
             # Add kb_retrieval_results from original KB query
@@ -1235,6 +1228,190 @@ CRITICAL INSTRUCTIONS:
             }
             
             return error_result
+    
+    def _create_citations_from_kb_results(self, llm_citations: List[Dict[str, Any]], 
+                                         kb_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Create proper citations that reference actual KB content instead of generic placeholders.
+        
+        Args:
+            llm_citations: Citations from LLM response (may be generic)
+            kb_results: Knowledge base results with actual content
+            
+        Returns:
+            List of validated citations with proper source references
+        """
+        if not kb_results:
+            return []
+        
+        validated_citations = []
+        
+        # If LLM provided meaningful citations, try to map them to KB results
+        if llm_citations and any(c.get('excerpt') and c.get('excerpt') != 'No excerpt provided' for c in llm_citations):
+            for citation in llm_citations:
+                if isinstance(citation, dict) and citation.get('excerpt'):
+                    # Try to find matching KB result based on content similarity
+                    best_match = self._find_best_kb_match_for_citation(citation, kb_results)
+                    if best_match:
+                        validated_citation = {
+                            'document_title': self._extract_filename_from_source(best_match['source']),
+                            'section_or_page': citation.get('section_or_page', ''),
+                            'excerpt': citation.get('excerpt', '')
+                        }
+                        validated_citations.append(validated_citation)
+        
+        # If no meaningful LLM citations or we need more, create citations from top KB results
+        if len(validated_citations) < 3 and len(kb_results) > 0:
+            # Add citations from top KB results that weren't already included
+            used_sources = {c['document_title'] for c in validated_citations}
+            
+            for kb_result in kb_results[:5]:  # Use top 5 KB results
+                filename = self._extract_filename_from_source(kb_result['source'])
+                if filename not in used_sources:
+                    # Extract meaningful excerpt from KB content
+                    excerpt = self._extract_meaningful_excerpt(kb_result)
+                    if excerpt:
+                        citation = {
+                            'document_title': filename,
+                            'section_or_page': self._extract_section_from_kb_result(kb_result),
+                            'excerpt': excerpt
+                        }
+                        validated_citations.append(citation)
+                        used_sources.add(filename)
+                        
+                        # Limit to reasonable number of citations
+                        if len(validated_citations) >= 5:
+                            break
+        
+        logger.info(f"Created {len(validated_citations)} citations from {len(kb_results)} KB results")
+        return validated_citations
+    
+    def _find_best_kb_match_for_citation(self, citation: Dict[str, Any], 
+                                        kb_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Find the best KB result that matches a citation excerpt.
+        
+        Args:
+            citation: Citation with excerpt to match
+            kb_results: Available KB results
+            
+        Returns:
+            Best matching KB result or None
+        """
+        citation_excerpt = citation.get('excerpt', '').lower()
+        if not citation_excerpt or len(citation_excerpt) < 10:
+            return None
+        
+        best_match = None
+        best_score = 0
+        
+        for kb_result in kb_results:
+            kb_content = kb_result.get('full_content', kb_result.get('snippet', '')).lower()
+            
+            # Simple similarity check - count common words
+            citation_words = set(citation_excerpt.split())
+            kb_words = set(kb_content.split())
+            common_words = citation_words.intersection(kb_words)
+            
+            if len(common_words) > 0:
+                score = len(common_words) / len(citation_words)
+                if score > best_score:
+                    best_score = score
+                    best_match = kb_result
+        
+        return best_match if best_score > 0.3 else None  # Require 30% word overlap
+    
+    def _extract_filename_from_source(self, source_uri: str) -> str:
+        """
+        Extract filename from S3 URI or source path.
+        
+        Args:
+            source_uri: S3 URI or file path
+            
+        Returns:
+            Filename without path
+        """
+        if not source_uri:
+            return "Unknown Document"
+        
+        # Handle S3 URIs
+        if source_uri.startswith('s3://'):
+            return source_uri.split('/')[-1]
+        
+        # Handle regular file paths
+        return source_uri.split('/')[-1] if '/' in source_uri else source_uri
+    
+    def _extract_meaningful_excerpt(self, kb_result: Dict[str, Any]) -> str:
+        """
+        Extract a meaningful excerpt from KB result content.
+        
+        Args:
+            kb_result: Knowledge base result
+            
+        Returns:
+            Meaningful excerpt or empty string
+        """
+        # Try to get full content first, then snippet
+        content = kb_result.get('full_content', kb_result.get('snippet', ''))
+        
+        if not content:
+            return ""
+        
+        # Clean up JSON formatting if present
+        if content.startswith('{"text":'):
+            try:
+                parsed = json.loads(content)
+                content = parsed.get('text', content)
+            except:
+                pass
+        
+        # Extract first meaningful sentence or paragraph
+        sentences = content.split('.')
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if len(sentence) > 20 and not sentence.startswith('#') and not sentence.startswith('<'):
+                # Limit excerpt length
+                if len(sentence) > 200:
+                    sentence = sentence[:200] + "..."
+                return sentence
+        
+        # Fallback to first 200 characters
+        clean_content = content.replace('\n', ' ').strip()
+        if len(clean_content) > 200:
+            return clean_content[:200] + "..."
+        
+        return clean_content if len(clean_content) > 10 else ""
+    
+    def _extract_section_from_kb_result(self, kb_result: Dict[str, Any]) -> str:
+        """
+        Extract section information from KB result metadata.
+        
+        Args:
+            kb_result: Knowledge base result
+            
+        Returns:
+            Section identifier or empty string
+        """
+        metadata = kb_result.get('metadata', {})
+        
+        # Try to get page number
+        page_num = metadata.get('x-amz-bedrock-kb-document-page-number')
+        if page_num is not None:
+            return f"Page {int(page_num)}"
+        
+        # Try to extract section from content
+        content = kb_result.get('full_content', kb_result.get('snippet', ''))
+        if content and '#' in content:
+            lines = content.split('\n')
+            for line in lines:
+                line = line.strip()
+                if line.startswith('#') and not line.startswith('##'):
+                    # Extract section title
+                    section = line.replace('#', '').strip()
+                    if len(section) > 0 and len(section) < 100:
+                        return section
+        
+        return ""
 
     @handle_aws_error
     def calculate_company_match(self, enhanced_description: str, 

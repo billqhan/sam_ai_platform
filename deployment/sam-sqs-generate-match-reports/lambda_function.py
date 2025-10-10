@@ -596,11 +596,16 @@ def create_enhanced_match_result(opportunity_data: Dict[str, Any],
         poc_email = ''
         poc_phone = ''
     
-    # Extract place of performance information
-    place_of_performance = opportunity_data.get('placeOfPerformance', {})
-    city_name = place_of_performance.get('city', {}).get('name', '')
-    state_name = place_of_performance.get('state', {}).get('name', '')
-    country_name = place_of_performance.get('country', {}).get('name', '')
+    # Extract place of performance information with null safety
+    place_of_performance = opportunity_data.get('placeOfPerformance')
+    if place_of_performance and isinstance(place_of_performance, dict):
+        city_name = place_of_performance.get('city', {}).get('name', '') if place_of_performance.get('city') else ''
+        state_name = place_of_performance.get('state', {}).get('name', '') if place_of_performance.get('state') else ''
+        country_name = place_of_performance.get('country', {}).get('name', '') if place_of_performance.get('country') else ''
+    else:
+        city_name = ''
+        state_name = ''
+        country_name = ''
     
     # Generate UI link
     ui_link = f"https://sam.gov/opp/{notice_id}/view" if notice_id else ''
@@ -775,7 +780,7 @@ def write_results_to_s3(match_result: Dict[str, Any],
     
     # Create S3 keys
     sqs_key = f"{current_time.strftime('%Y-%m-%d')}/matches/{opportunity_id}.json"
-    runs_key = f"runs/{current_time.strftime('%Y%m%dt%H%MZ')}_{opportunity_id}.json"
+    runs_key = f"runs/raw/{current_time.strftime('%Y%m%dt%H%MZ')}_{opportunity_id}.json"
     
     try:
         # Write to SQS bucket
@@ -788,21 +793,15 @@ def write_results_to_s3(match_result: Dict[str, Any],
         )
         error_handler.log_s3_operation("write", sqs_bucket, sqs_key, success=True)
         
-        # Create run summary
-        run_summary = {
-            'run_id': f"{current_time.strftime('%Y%m%dt%H%M%S')}_{opportunity_id}",
-            'timestamp': current_time.isoformat(),
-            'opportunity_id': opportunity_id,
-            'match_score': match_result.get('score', 0.0),
-            'processing_status': 'success'
-        }
+        # Create enhanced run result with full match data (similar to provided schema)
+        run_result = create_enhanced_run_result(match_result, current_time)
         
-        # Write to runs bucket
+        # Write to runs bucket in raw folder
         error_handler.log_s3_operation("write", runs_bucket, runs_key)
         aws_clients.s3.put_object(
             Bucket=runs_bucket,
             Key=runs_key,
-            Body=json.dumps(run_summary, indent=2),
+            Body=json.dumps(run_result, indent=2),
             ContentType='application/json'
         )
         error_handler.log_s3_operation("write", runs_bucket, runs_key, success=True)
@@ -813,6 +812,48 @@ def write_results_to_s3(match_result: Dict[str, Any],
         error_handler.log_s3_operation("write", sqs_bucket, sqs_key, success=False, error=e)
         error_handler.log_s3_operation("write", runs_bucket, runs_key, success=False, error=e)
         raise
+
+
+def create_enhanced_run_result(match_result: Dict[str, Any], current_time: datetime) -> Dict[str, Any]:
+    """
+    Create enhanced run result with schema similar to the provided example.
+    
+    Args:
+        match_result: The complete match result
+        current_time: Current timestamp
+        
+    Returns:
+        Enhanced run result dictionary
+    """
+    # Extract core fields from match_result
+    run_result = {
+        'solicitationNumber': match_result.get('solicitationNumber', ''),
+        'noticeId': match_result.get('noticeId', ''),
+        'title': match_result.get('title', ''),
+        'fullParentPathName': match_result.get('fullParentPathName', ''),
+        'enhanced_description': match_result.get('enhanced_description', ''),
+        'score': match_result.get('score', 0.0),
+        'rationale': match_result.get('rationale', ''),
+        'opportunity_required_skills': match_result.get('opportunity_required_skills', []),
+        'company_skills': match_result.get('company_skills', []),
+        'past_performance': match_result.get('past_performance', []),
+        'citations': match_result.get('citations', []),
+        'kb_retrieval_results': match_result.get('kb_retrieval_results', []),
+        'input_key': match_result.get('input_key', ''),
+        'timestamp': match_result.get('timestamp', current_time.isoformat()),
+        'postedDate': match_result.get('postedDate', ''),
+        'type': match_result.get('type', ''),
+        'responseDeadLine': match_result.get('responseDeadLine', ''),
+        'pointOfContact.fullName': match_result.get('pointOfContact.fullName', ''),
+        'pointOfContact.email': match_result.get('pointOfContact.email', ''),
+        'pointOfContact.phone': match_result.get('pointOfContact.phone', ''),
+        'placeOfPerformance.city.name': match_result.get('placeOfPerformance.city.name', ''),
+        'placeOfPerformance.state.name': match_result.get('placeOfPerformance.state.name', ''),
+        'placeOfPerformance.country.name': match_result.get('placeOfPerformance.country.name', ''),
+        'uiLink': match_result.get('uiLink', '')
+    }
+    
+    return run_result
 
 
 def write_error_record_to_s3(error_record: Dict[str, Any],

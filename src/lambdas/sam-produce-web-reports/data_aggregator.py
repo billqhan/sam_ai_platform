@@ -7,7 +7,7 @@ import json
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
-from shared import get_logger, get_s3_client, config
+from shared import get_logger, aws_clients, config
 
 logger = get_logger(__name__)
 
@@ -41,7 +41,7 @@ class DataAggregator:
     """Aggregates run result data for dashboard generation."""
     
     def __init__(self):
-        self.s3_client = get_s3_client()
+        self.s3_client = aws_clients.s3
         self.runs_bucket = config.s3.sam_matching_out_runs
     
     def aggregate_daily_data(self, date_prefix: str) -> Optional[DailyStats]:
@@ -67,17 +67,20 @@ class DataAggregator:
             
             # Initialize daily stats
             daily_stats = DailyStats(date=date_prefix)
-            all_matches = []
-            match_scores = []
+            all_records = []
             
             # Process each run file
             for run_file in run_files:
-                run_data = self._load_run_file(run_file)
-                if run_data:
-                    self._aggregate_run_data(daily_stats, run_data, all_matches, match_scores)
+                records = self._load_run_file(run_file)
+                if records:
+                    all_records.extend(records)
             
-            # Calculate derived statistics
-            self._calculate_derived_stats(daily_stats, all_matches, match_scores)
+            if not all_records:
+                logger.warning(f"No records found in run files", date=date_prefix)
+                return None
+            
+            # Aggregate the flattened records
+            self._aggregate_records(daily_stats, all_records)
             
             logger.info(f"Data aggregation completed", 
                        date=date_prefix,
@@ -120,15 +123,16 @@ class DataAggregator:
             logger.error(f"Error finding run files: {str(e)}", date=date_prefix)
             return []
     
-    def _load_run_file(self, object_key: str) -> Optional[Dict[str, Any]]:
+    def _load_run_file(self, object_key: str) -> Optional[List[Dict[str, Any]]]:
         """
         Load and parse a run result file from S3.
+        Flattens JSON list-of-lists into list of dicts for opportunity records.
         
         Args:
             object_key: S3 object key for the run file
             
         Returns:
-            Parsed run data dictionary or None if failed
+            List of flattened opportunity records or None if failed
         """
         try:
             response = self.s3_client.get_object(
@@ -137,61 +141,80 @@ class DataAggregator:
             )
             
             content = response['Body'].read().decode('utf-8')
-            run_data = json.loads(content)
+            data = json.loads(content)
+            
+            # Flatten list-of-lists into list of dicts
+            flat_records = []
+            for entry in data:
+                if isinstance(entry, list):
+                    flat_records.extend(entry)
+                elif isinstance(entry, dict):
+                    flat_records.append(entry)
             
             logger.debug(f"Loaded run file", key=object_key, 
-                        opportunities=run_data.get('total_opportunities', 0))
+                        opportunities=len(flat_records))
             
-            return run_data
+            return flat_records
             
         except Exception as e:
             logger.error(f"Error loading run file: {str(e)}", key=object_key)
             return None
     
-    def _aggregate_run_data(self, daily_stats: DailyStats, run_data: Dict[str, Any], 
-                           all_matches: List[OpportunityMatch], match_scores: List[float]):
+    def _aggregate_records(self, daily_stats: DailyStats, records: List[Dict[str, Any]]):
         """
-        Aggregate data from a single run into daily statistics.
+        Aggregate flattened opportunity records into daily statistics.
         
         Args:
             daily_stats: DailyStats object to update
-            run_data: Individual run data
-            all_matches: List to collect all matches
-            match_scores: List to collect all match scores
+            records: List of flattened opportunity records
         """
         try:
-            # Aggregate basic counts
-            daily_stats.total_opportunities += run_data.get('total_opportunities', 0)
-            daily_stats.matches_found += run_data.get('matches_found', 0)
-            daily_stats.no_matches += run_data.get('no_matches', 0)
-            daily_stats.errors += run_data.get('errors', 0)
-            daily_stats.total_processing_time += run_data.get('processing_time_seconds', 0)
-            daily_stats.run_count += 1
+            all_matches = []
+            match_scores = []
             
-            # Extract timestamp for hourly distribution
-            timestamp = run_data.get('timestamp', '')
-            if timestamp:
-                hour = self._extract_hour_from_timestamp(timestamp)
-                if hour is not None:
-                    daily_stats.hourly_distribution[hour] = daily_stats.hourly_distribution.get(hour, 0) + 1
+            # Process each record
+            for record in records:
+                if not isinstance(record, dict):
+                    continue
+                
+                # Count opportunities
+                daily_stats.total_opportunities += 1
+                
+                # Check if matched
+                matched = record.get('matched', False)
+                if matched:
+                    daily_stats.matches_found += 1
+                else:
+                    daily_stats.no_matches += 1
+                
+                # Get match score
+                score = record.get('score', 0.0)
+                if isinstance(score, (int, float)):
+                    match_scores.append(float(score))
+                
+                # Collect ALL opportunities processed that day (not just matched ones)
+                opportunity_match = OpportunityMatch(
+                    solicitation_id=record.get('solicitationNumber', ''),
+                    match_score=float(score) if isinstance(score, (int, float)) else 0.0,
+                    title=record.get('title', ''),
+                    timestamp=record.get('postedDate', ''),
+                    value=record.get('awardAmount', ''),
+                    deadline=record.get('responseDeadLine', '')
+                )
+                all_matches.append(opportunity_match)
             
-            # Collect top matches
-            top_matches = run_data.get('top_matches', [])
-            for match in top_matches:
-                if isinstance(match, dict):
-                    opportunity_match = OpportunityMatch(
-                        solicitation_id=match.get('solicitation_id', ''),
-                        match_score=float(match.get('match_score', 0.0)),
-                        title=match.get('title', ''),
-                        timestamp=timestamp,
-                        value=match.get('value'),
-                        deadline=match.get('deadline')
-                    )
-                    all_matches.append(opportunity_match)
-                    match_scores.append(opportunity_match.match_score)
+            # Calculate derived statistics
+            self._calculate_derived_stats(daily_stats, all_matches, match_scores)
             
         except Exception as e:
-            logger.error(f"Error aggregating run data: {str(e)}", run_data=run_data)
+            logger.error(f"Error aggregating records: {str(e)}")
+    
+    def _aggregate_run_data(self, daily_stats: DailyStats, run_data: Dict[str, Any], 
+                           all_matches: List[OpportunityMatch], match_scores: List[float]):
+        """
+        Legacy method - kept for compatibility but not used with new flattened structure.
+        """
+        pass
     
     def _calculate_derived_stats(self, daily_stats: DailyStats, 
                                 all_matches: List[OpportunityMatch], 

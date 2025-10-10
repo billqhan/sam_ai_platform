@@ -5,13 +5,17 @@ Generates daily web dashboard with match statistics.
 
 import json
 import re
+import os
 from datetime import datetime
 from typing import Dict, List, Any, Optional
-from shared import get_logger, handle_lambda_error, config, get_s3_client
-from .dashboard_generator import DashboardGenerator
-from .data_aggregator import DataAggregator
+from shared import get_logger, handle_lambda_error, config, aws_clients
+from dashboard_generator import DashboardGenerator
+from data_aggregator import DataAggregator
 
 logger = get_logger(__name__)
+
+# Get website bucket from environment variable with fallback to config
+WEBSITE_BUCKET = os.environ.get("WEBSITE_BUCKET", config.s3.sam_website)
 
 @handle_lambda_error
 def lambda_handler(event, context):
@@ -187,10 +191,10 @@ def _generate_dashboard(date_prefix: str) -> Optional[str]:
         
         # Store dashboard in S3
         dashboard_path = f"dashboards/Summary_{date_prefix}.html"
-        s3_client = get_s3_client()
+        s3_client = aws_clients.s3
         
         s3_client.put_object(
-            Bucket=config.s3.sam_website,
+            Bucket=WEBSITE_BUCKET,
             Key=dashboard_path,
             Body=html_content,
             ContentType='text/html',
@@ -198,7 +202,45 @@ def _generate_dashboard(date_prefix: str) -> Optional[str]:
         )
         
         logger.info(f"Dashboard stored successfully", 
-                   bucket=config.s3.sam_website, path=dashboard_path)
+                   bucket=WEBSITE_BUCKET, path=dashboard_path)
+        
+        # Generate and store manifest JSON for index
+        manifest = {
+            "date": date_prefix,
+            "total": daily_data.total_opportunities,
+            "matched": daily_data.matches_found,
+            "average_score": daily_data.average_match_score,
+            "link": f"Summary_{date_prefix}.html"
+        }
+        
+        manifest_path = f"dashboards/Summary_{date_prefix}.json"
+        s3_client.put_object(
+            Bucket=WEBSITE_BUCKET,
+            Key=manifest_path,
+            Body=json.dumps(manifest),
+            ContentType='application/json'
+        )
+        
+        # Update index.html
+        index_html = dashboard_generator.generate_index_page(WEBSITE_BUCKET)
+        s3_client.put_object(
+            Bucket=WEBSITE_BUCKET,
+            Key="dashboards/index.html",
+            Body=index_html,
+            ContentType='text/html'
+        )
+        
+        # Create/update root redirect
+        root_redirect = dashboard_generator.generate_root_redirect()
+        s3_client.put_object(
+            Bucket=WEBSITE_BUCKET,
+            Key="index.html",
+            Body=root_redirect,
+            ContentType='text/html'
+        )
+        
+        logger.info(f"Generated complete website structure", 
+                   bucket=WEBSITE_BUCKET, dashboard=dashboard_path)
         
         return dashboard_path
         

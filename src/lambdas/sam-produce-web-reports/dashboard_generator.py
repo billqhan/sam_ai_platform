@@ -6,8 +6,8 @@ Creates responsive HTML dashboards with CSS styling for web hosting.
 import json
 from datetime import datetime
 from typing import Dict, List, Any
-from shared import get_logger
-from .data_aggregator import DailyStats
+from shared import get_logger, aws_clients
+from data_aggregator import DailyStats
 
 logger = get_logger(__name__)
 
@@ -19,7 +19,7 @@ class DashboardGenerator:
     
     def generate_html(self, daily_stats: DailyStats) -> str:
         """
-        Generate HTML dashboard from daily statistics.
+        Generate enhanced HTML dashboard from daily statistics with Bootstrap styling.
         
         Args:
             daily_stats: Aggregated daily statistics
@@ -34,19 +34,15 @@ class DashboardGenerator:
             formatted_date = self._format_date_for_display(daily_stats.date)
             
             # Generate dashboard sections
-            summary_section = self._generate_summary_section(daily_stats)
-            charts_section = self._generate_charts_section(daily_stats)
-            top_matches_section = self._generate_top_matches_section(daily_stats)
-            performance_section = self._generate_performance_section(daily_stats)
+            summary_section = self._generate_enhanced_summary_section(daily_stats)
+            top_matches_section = self._generate_enhanced_top_matches_section(daily_stats)
             
             # Replace template placeholders
             html_content = self.template.format(
                 date=formatted_date,
                 date_prefix=daily_stats.date,
                 summary_section=summary_section,
-                charts_section=charts_section,
                 top_matches_section=top_matches_section,
-                performance_section=performance_section,
                 last_updated=datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
             )
             
@@ -76,36 +72,48 @@ class DashboardGenerator:
         except Exception:
             return date_prefix
     
-    def _generate_summary_section(self, daily_stats: DailyStats) -> str:
-        """Generate summary statistics section."""
+    def _generate_enhanced_summary_section(self, daily_stats: DailyStats) -> str:
+        """Generate enhanced summary statistics section with Bootstrap cards."""
         return f"""
-        <div class="summary-grid">
-            <div class="stat-card">
-                <div class="stat-number">{daily_stats.total_opportunities:,}</div>
-                <div class="stat-label">Total Opportunities</div>
+        <div class="row">
+            <div class="col-md-3 mb-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h3 class="card-title text-primary">{daily_stats.total_opportunities:,}</h3>
+                        <p class="card-text">Total Opportunities</p>
+                    </div>
+                </div>
             </div>
-            <div class="stat-card success">
-                <div class="stat-number">{daily_stats.matches_found:,}</div>
-                <div class="stat-label">Matches Found</div>
+            <div class="col-md-3 mb-3">
+                <div class="card text-center border-success">
+                    <div class="card-body">
+                        <h3 class="card-title text-success">{daily_stats.matches_found:,}</h3>
+                        <p class="card-text">Matches Found</p>
+                    </div>
+                </div>
             </div>
-            <div class="stat-card neutral">
-                <div class="stat-number">{daily_stats.no_matches:,}</div>
-                <div class="stat-label">No Matches</div>
+            <div class="col-md-3 mb-3">
+                <div class="card text-center border-warning">
+                    <div class="card-body">
+                        <h3 class="card-title text-warning">{daily_stats.no_matches:,}</h3>
+                        <p class="card-text">No Matches</p>
+                    </div>
+                </div>
             </div>
-            <div class="stat-card error">
-                <div class="stat-number">{daily_stats.errors:,}</div>
-                <div class="stat-label">Errors</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{daily_stats.success_rate:.1f}%</div>
-                <div class="stat-label">Success Rate</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{daily_stats.average_match_score:.3f}</div>
-                <div class="stat-label">Avg Match Score</div>
+            <div class="col-md-3 mb-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h3 class="card-title text-info">{daily_stats.average_match_score:.3f}</h3>
+                        <p class="card-text">Average Score</p>
+                    </div>
+                </div>
             </div>
         </div>
         """
+    
+    def _generate_summary_section(self, daily_stats: DailyStats) -> str:
+        """Legacy method - kept for compatibility."""
+        return self._generate_enhanced_summary_section(daily_stats)
     
     def _generate_charts_section(self, daily_stats: DailyStats) -> str:
         """Generate charts and visualizations section."""
@@ -169,35 +177,161 @@ class DashboardGenerator:
         
         return f'<div class="hour-chart">{"".join(bars)}</div>'
     
-    def _generate_top_matches_section(self, daily_stats: DailyStats) -> str:
-        """Generate top matches section."""
+    def generate_index_page(self, bucket_name: str) -> str:
+        """
+        Generate index page showing all available dashboards.
+        
+        Args:
+            bucket_name: S3 bucket name to list dashboards from
+            
+        Returns:
+            HTML content for index page
+        """
+        try:
+            logger.info("Generating index page", bucket=bucket_name)
+            
+            # Simple approach - just show a basic index for now
+            # In a production system, we'd list and parse all manifest files
+            cards_html = '<div class="col-12"><div class="alert alert-info text-center">Dashboard index is being generated. Check back soon for available reports.</div></div>'
+            
+            return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAM Opportunity Dashboard Index</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container py-5">
+        <div class="row mb-4">
+            <div class="col-12 text-center">
+                <h1 class="display-4 mb-3"><i class="bi bi-list-check me-3"></i>SAM Opportunity Dashboards</h1>
+                <p class="lead text-muted">Daily opportunity matching reports and analytics</p>
+            </div>
+        </div>
+        <div class="row">
+            {cards_html}
+        </div>
+        <footer class="mt-5 border-top pt-3 text-muted text-center">
+            <p>Generated on {datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")}</p>
+            <p>SAM AI-powered RFP Response Agent</p>
+        </footer>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>"""
+            
+        except Exception as e:
+            logger.error(f"Error generating index page: {str(e)}")
+            return self._generate_error_page(f"Error generating index page: {str(e)}")
+    
+    def generate_root_redirect(self) -> str:
+        """
+        Generate root index.html that redirects to dashboards/index.html.
+        
+        Returns:
+            HTML content for root redirect page
+        """
+        return """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="0; url=dashboards/index.html">
+    <title>Redirecting to SAM Opportunity Dashboards...</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light d-flex align-items-center justify-content-center" style="min-height: 100vh;">
+    <div class="text-center">
+        <div class="spinner-border text-primary mb-3" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <h3>Redirecting to SAM Opportunity Dashboards...</h3>
+        <p class="text-muted">If you're not redirected automatically, 
+            <a href="dashboards/index.html">click here</a>.</p>
+    </div>
+    <script>
+        // Fallback redirect in case meta refresh doesn't work
+        setTimeout(() => window.location.href = 'dashboards/index.html', 1000);
+    </script>
+</body>
+</html>"""
+    
+    def _generate_error_page(self, error_message: str) -> str:
+        """Generate a simple error page."""
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error - SAM Dashboards</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container py-5">
+        <div class="alert alert-danger text-center">
+            <h4>Error</h4>
+            <p>{self._escape_html(error_message)}</p>
+        </div>
+    </div>
+</body>
+</html>"""
+    
+    def _generate_enhanced_top_matches_section(self, daily_stats: DailyStats) -> str:
+        """Generate section showing all opportunities processed that day with Bootstrap styling."""
         if not daily_stats.top_matches:
-            return '<div class="no-data">No matches found for this date</div>'
+            return '<div class="alert alert-info text-center">No opportunities were processed on this date</div>'
         
         matches_html = []
-        for i, match in enumerate(daily_stats.top_matches[:10], 1):
-            score_class = self._get_score_class(match['match_score'])
-            deadline = match.get('deadline', 'Not specified')
-            value = match.get('value', 'Not specified')
+        # Sort by match score (highest first) but show all opportunities
+        sorted_matches = sorted(daily_stats.top_matches, key=lambda x: x.get('match_score', 0), reverse=True)
+        
+        for i, match in enumerate(sorted_matches, 1):
+            score_class = self._get_bootstrap_score_class(match['match_score'])
+            deadline = self._escape_html(str(match.get('deadline', 'Not specified')))
+            value = self._escape_html(str(match.get('value', 'Not specified')))
+            title = self._escape_html(match['title'][:150])
+            if len(match['title']) > 150:
+                title += '...'
+            
+            # Add match status indicator
+            match_status = "✅ Matched" if match['match_score'] > 0 else "❌ No Match"
+            status_class = "text-success" if match['match_score'] > 0 else "text-danger"
             
             matches_html.append(f"""
-                <div class="match-item">
-                    <div class="match-rank">#{i}</div>
-                    <div class="match-content">
-                        <div class="match-header">
-                            <div class="match-title">{self._escape_html(match['title'][:100])}{'...' if len(match['title']) > 100 else ''}</div>
-                            <div class="match-score {score_class}">{match['match_score']:.3f}</div>
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h5 class="card-title mb-0">#{i} {title}</h5>
+                            <div class="text-end">
+                                <span class="badge {score_class} fs-6">{match['match_score']:.3f}</span>
+                                <br><small class="{status_class}">{match_status}</small>
+                            </div>
                         </div>
-                        <div class="match-details">
-                            <span class="match-id">ID: {match['solicitation_id']}</span>
-                            <span class="match-value">Value: {value}</span>
-                            <span class="match-deadline">Deadline: {deadline}</span>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <small class="text-muted">Solicitation ID:</small><br>
+                                <strong>{self._escape_html(match['solicitation_id'])}</strong>
+                            </div>
+                            <div class="col-md-4">
+                                <small class="text-muted">Value:</small><br>
+                                <strong>{value}</strong>
+                            </div>
+                            <div class="col-md-4">
+                                <small class="text-muted">Deadline:</small><br>
+                                <strong>{deadline}</strong>
+                            </div>
                         </div>
                     </div>
                 </div>
             """)
         
-        return f'<div class="matches-list">{"".join(matches_html)}</div>'
+        return f'<div class="matches-container">{"".join(matches_html)}</div>'
+    
+    def _generate_top_matches_section(self, daily_stats: DailyStats) -> str:
+        """Legacy method - kept for compatibility."""
+        return self._generate_enhanced_top_matches_section(daily_stats)
     
     def _generate_performance_section(self, daily_stats: DailyStats) -> str:
         """Generate system performance section."""
@@ -224,16 +358,20 @@ class DashboardGenerator:
         </div>
         """
     
-    def _get_score_class(self, score: float) -> str:
-        """Get CSS class for match score."""
+    def _get_bootstrap_score_class(self, score: float) -> str:
+        """Get Bootstrap badge class for match score."""
         if score >= 0.8:
-            return 'score-excellent'
+            return 'bg-success'
         elif score >= 0.6:
-            return 'score-good'
+            return 'bg-primary'
         elif score >= 0.4:
-            return 'score-fair'
+            return 'bg-warning'
         else:
-            return 'score-poor'
+            return 'bg-danger'
+    
+    def _get_score_class(self, score: float) -> str:
+        """Legacy method - kept for compatibility."""
+        return self._get_bootstrap_score_class(score)
     
     def _escape_html(self, text: str) -> str:
         """Escape HTML special characters."""
@@ -265,7 +403,7 @@ class DashboardGenerator:
     
     def _get_html_template(self) -> str:
         """
-        Get the HTML template for dashboard generation.
+        Get the enhanced HTML template for dashboard generation with Bootstrap styling.
         
         Returns:
             HTML template string with placeholders
@@ -276,6 +414,8 @@ class DashboardGenerator:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAM Opportunity Dashboard - {date}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <style>
         * {{
             margin: 0;
@@ -634,37 +774,58 @@ class DashboardGenerator:
         }}
     </style>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>SAM Opportunity Dashboard</h1>
-            <p>Daily Report for {date}</p>
+<body class="bg-light">
+    <div class="container-fluid py-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card text-center text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <div class="card-body">
+                        <h1 class="card-title mb-3"><i class="bi bi-clipboard-data me-2"></i>SAM Opportunity Dashboard</h1>
+                        <p class="card-text fs-5">Daily Report for {date}</p>
+                    </div>
+                </div>
+            </div>
         </div>
         
-        <div class="section">
-            <h2>Summary Statistics</h2>
-            {summary_section}
+        <!-- Summary Statistics -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Summary Statistics</h2>
+                    </div>
+                    <div class="card-body">
+                        {summary_section}
+                    </div>
+                </div>
+            </div>
         </div>
         
-        <div class="section">
-            <h2>Data Visualizations</h2>
-            {charts_section}
+        <!-- Top Opportunity Matches -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="mb-0"><i class="bi bi-list-ul me-2"></i>Opportunities Processed Today</h2>
+                    </div>
+                    <div class="card-body">
+                        {top_matches_section}
+                    </div>
+                </div>
+            </div>
         </div>
         
-        <div class="section">
-            <h2>Top Opportunity Matches</h2>
-            {top_matches_section}
-        </div>
-        
-        <div class="section">
-            <h2>System Performance</h2>
-            {performance_section}
-        </div>
-        
-        <div class="footer">
-            <p>Last updated: {last_updated}</p>
-            <p>Generated by SAM AI-powered RFP Response Agent</p>
-        </div>
+        <!-- Footer -->
+        <footer class="mt-5 py-4 border-top">
+            <div class="container-fluid text-center text-muted">
+                <p>Last updated: {last_updated}</p>
+                <p>Generated by SAM AI-powered RFP Response Agent</p>
+            </div>
+        </footer>
     </div>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>"""

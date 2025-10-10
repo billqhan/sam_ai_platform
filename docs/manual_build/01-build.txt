@@ -1,0 +1,421 @@
+## - Currently used 78/500 credits on creating software
+
+## Already installed AWS CLI, and preformed aws configure 
+
+## Added policy to external bucket s3://m2024-company-data
+
+
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "Statement1",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "arn:aws:iam::302585542747:user/MGA"
+            },
+            "Action": [
+                "s3:List*",
+                "s3:Get*"
+            ],
+            "Resource": [
+                "arn:aws:s3:::m2024-company-data",
+                "arn:aws:s3:::m2024-company-data/*"
+            ]
+        }
+    ]
+}
+
+## 
+# Create S3 bucket for CloudFormation templates
+aws s3 mb s3://m2-sam-templates-bucket
+
+# Enable versioning (recommended)
+aws s3api put-bucket-versioning  --bucket m2-sam-templates-bucket   --versioning-configuration Status=Enabled
+
+
+## Windows PowerShell:
+
+
+.\infrastructure\scripts\deploy.ps1 `
+  -Environment "dev" `
+  -TemplatesBucket "m2-sam-templates-bucket" `
+  -SamApiKey "DZeUYfjw6vmnDbNTiX0YyFPMmUCt5Ne6RpuUzzq1" `
+  -CompanyName "L3Harris" `
+  -CompanyContact "contact@L3Harris.com" `
+  -BucketPrefix "ktest"
+
+
+## Asked to break this apart... 
+
+"It is taking a long time to test and resolve this. The longest part is the rollback and deletion of the resources. 
+It is possible to break the cloudformation script into multiple parts. 
+This way, it there is partial success, all the parts do not have to be rolled back and created again. 
+Something linke "deploy_part1" "delpoy_partN" or something that breaks the part into groups of resources . 
+This can make it easier to track and trace"
+
+version v0.0.12 
+
+.\infrastructure\scripts\deploy-all-phases.ps1 `
+  -Phase 1 `
+  -Environment "dev" `
+  -TemplatesBucket "m2-sam-templates-bucket" `
+  -SamApiKey "DZeUYfjw6vmnDbNTiX0YyFPMmUCt5Ne6RpuUzzq1" `
+  -CompanyName "L3Harris" `
+  -CompanyContact "contact@L3Harris.com" `
+  -BucketPrefix "ktest"
+
+.\infrastructure\scripts\deploy-all-phases.ps1 `
+  -Phase 2 `
+  -Environment "dev" `
+  -TemplatesBucket "m2-sam-templates-bucket" `
+  -SamApiKey "DZeUYfjw6vmnDbNTiX0YyFPMmUCt5Ne6RpuUzzq1" `
+  -CompanyName "L3Harris" `
+  -CompanyContact "contact@L3Harris.com" `
+  -BucketPrefix "ktest"
+
+.\infrastructure\scripts\deploy-all-phases.ps1 `
+  -Phase 3 `
+  -Environment "dev" `
+  -TemplatesBucket "m2-sam-templates-bucket" `
+  -SamApiKey "DZeUYfjw6vmnDbNTiX0YyFPMmUCt5Ne6RpuUzzq1" `
+  -CompanyName "L3Harris" `
+  -CompanyContact "contact@L3Harris.com" `
+  -BucketPrefix "ktest"
+
+## The above was successful (Currently at 109/500 credits)
+
+Step 3: Post-Deployment Configuration
+Upload Company Information:
+
+aws s3 cp s3://m2024-company-data/test2/ s3://ktest-sam-company-info-dev/ --recursive
+
+## Ensure sam-gov-daily-download only runs once
+
+(See docs\02-deployment-troubleshooting-session.md)
+
+
+  aws lambda invoke --function-name ktest-sam-gov-daily-download-dev --payload '{}' response.json
+
+(See docs\03-deployment-troubleshootin-gsession.md)
+
+## Completed download of daata in ktest-sam-data-in bucket
+
+at 127/500 credits  
+
+##*************************************
+
+## Continung testing Task 3 - Did in Kiro
+
+152/500 credits remaining 
+
+### Task 4  - SQS 
+
+This took a lot of work ... lots of problems 
+209/500  credits remaining 
+
+
+## Task 5 / 6 
+
+This part was the most painful... probably because it was intereacting with the SQS queue and also calling the 2 llm functions at the same time.
+
+aws s3 cp s3://ktest-sam-extracted-json-resources-dev/FA813725R0035/FA813725R0035_opportunity.json s3://ktest-sam-extracted-json-resources-dev/FA813725R0035/FA813725R0035_opportunity.json 
+aws s3 cp s3://ktest-sam-extracted-json-resources-dev/36C26126R0001/36C26126R0001_opportunity.json s3://ktest-sam-extracted-json-resources-dev/36C26126R0001/36C26126R0001_opportunity.json
+
+288/500 credits remaining 
+
+------------------------------------------------------------------------------------
+## Output is still  needs fixing 
+The lambda function sam-sqs-generate-match-reports is currently outputing "debug" output after it processes records from SQS, instead of using information from the llm.
+Can you please updated the lambada function so it generates real results. 
+
+** The system went back through the req and design phase... i provided the additional infomration: 
+
+-------------
+at a minimum the "run" results should contain the following information:
+
+    {
+
+      "solicitationNumber": "W50S8N25QA019",
+
+      "score": 0.6,
+
+      "noticeId": "efc3146250e14d529ab69a7b027b052c",
+
+      "postedDate": "2025-09-07",
+
+      "title": "138th SCIF Door Replacement",
+
+      "fullParentPathName": "DEPT OF DEFENSE.DEPT OF THE ARMY.NATIONAL GUARD BUREAU.W7NR USPFO ACTIVITY NYANG 174",
+
+      "enhanced_description": "### Business Summary\n\n**Purpose of the Solicitation:**\nThe purpose of this solicitation is to replace the existing main door of a Sensitive Compartmented Information Facility (SCIF) with a new door, frame, and associated hardware, including Intrusion Detection System (IDS) and Access Control System (ACS) components. The work must comply with all applicable security requirements and technical specifications.\n\n**Information Unique to the Project:**\nThe project involves the replacement of a SCIF door in Building 643, Room 147. The new door and frame must match the current door's construction materials and meet Sound Transmission Class (STC) 50. The work must be performed in accordance with the Technical Specifications for Construction and Management of Sensitive Compartmented Information Facilities (Version 1.5, IC Tech Spec \u2013 for ICD/ICS 705, dated March 13, 2020).\n\n**Overall Description of the Work:**\nThe contractor will remove the existing SCIF door, frame, and associated IDS and ACS hardware. This includes removing the existing X-10 lock by a GSA certified locksmith and replacing any incompatible wiring. The contractor will then install the new SCIF door, frame, and all required IDS and ACS components, including wiring, in accordance with security specifications. The work must be completed within one business week, subject to validation based on site conditions and complexity.\n\n**Technical Capabilities, Specific Skills, or Experience Required:**\nThe contractor must have experience in working within SCIFs and be familiar with the technical specifications for SCIF construction and management. The contractor must also be capable of handling Honeywell proprietary equipment for IDS and ACS systems. Additionally, the contractor must be able to coordinate with the facility SSO office for escorts and ensure all work complies with security requirements.\n\n### Non-Technical Summary\n\n- Clearances Information: Required\n- Technical Proposal Evaluation: Not included\n- Security: Compliant with SCIF standards\n- Compliance: Adherence to IC Tech Spec",
+
+      "matched": true,
+
+      "rationale": "The company has experience working with secure facilities and technologies, but there's no direct evidence of experience with SCIF door replacements, Honeywell proprietary equipment, or specific technical specifications mentioned. The company has a strong background in defense and security-related projects, which could be beneficial. However, the lack of direct experience with SCIFs and specific required technologies is a gap. The company's ability to handle secure information and work within sensitive environments could mitigate some of this gap.",
+
+      "opportunity_required_skills": [
+
+        "Experience working within SCIFs",
+
+        "Familiarity with technical specifications for SCIF construction and management (IC Tech Spec \u2013 for ICD/ICS 705, Version 1.5)",
+
+        "Capability to handle Honeywell proprietary equipment for IDS and ACS systems",
+
+        "GSA certified locksmith for X-10 lock removal",
+
+        "Sound Transmission Class (STC) 50 door and frame",
+
+        "Intrusion Detection System (IDS) components",
+
+        "Access Control System (ACS) components",
+
+        "Compliance with SCIF standards and security requirements",
+
+        "Coordination with facility SSO office for escorts"
+
+      ],
+
+      "company_skills": [
+
+        "Experience with secure facilities and technologies",
+
+        "Log management and cyber solutions (MantaWARE Cyber Manager)",
+
+        "Work with U.S. and international defense customers (United States Air Force, Air Force Special Operations Command, United States Navy, United States Coast Guard)",
+
+        "Integration with secure systems"
+
+      ],
+
+      "uiLink": "https://sam.gov/opp/efc3146250e14d529ab69a7b027b052c/view"
+
+    }
+
+
+
+at a minumum, the "match" results should contain the following. 
+
+
+
+{
+
+  "solicitationNumber": "HQ0860-25-S-C004",
+
+  "noticeId": "e297a6044bf34e4e9aac3f297b2813e8",
+
+  "title": "Missile Defense Agency - High Altitude Infrared Search and Track (HAIRST)",
+
+  "fullParentPathName": "DEPT OF DEFENSE.MISSILE DEFENSE AGENCY (MDA).MISSILE DEFENSE AGENCY (MDA)",
+
+  "enhanced_description": "### Business Summary\n\n**Purpose of the Solicitation**\n\nThe Missile Defense Agency (MDA) is seeking proposals for the \"High Altitude Infrared Search and Track (HAIRST)\" project. The solicitation aims to deliver and demonstrate infrared sensor prototypes hosted on high altitude platforms. These prototypes must be capable of searching a large volume for incoming missile threats and generating high-resolution tracks.\n\n**Information Unique to the Project**\n\nThe HAIRST project is part of MDA\u2019s Nimble Options for Buying Layered Effects (NOBLE) Announcement, Solicitation No. HQ0860-25-S-0001. This solicitation is issued under the authority at 10 U.S.C. \u00a7 4022: Authority of the Department of Defense (DoD) to carry out certain prototype projects.\n\n**Overall Description of the Work**\n\nThe work involves the development and demonstration of infrared sensor prototypes. These prototypes must be capable of searching a large volume for incoming missile threats and generating high-resolution tracks. The solicitation emphasizes the need for high-altitude platforms to host these sensors.\n\n**Technical Capabilities, Specific Skills, or Experience Required**\n\nOfferors must have an active SECRET (or higher) Facility Clearance (FCL) with SECRET (or higher) Safeguarding Level. An \u201cOfferor\u2019s Library\u201d with Controlled Unclassified Information (CUI) necessary to respond to this solicitation is available for eligible offerors. Details on requesting access to this library are provided in Section V. Description.\n\n### Non-Technical Summary\n\n- **Clearances Information:** SECRET (or higher) Facility Clearance\n- **Technical Proposal Evaluation:** Not specified\n- **Security:** Controlled Unclassified Information (CUI)\n- **Compliance:** MDA NOBLE Announcement",
+
+  "score": 0.8,
+
+  "rationale": "The company has relevant experience in developing and demonstrating sensor technologies, including infrared and missile warning systems. L3Harris' solutions provide immediate and continuous global coverage of threats with highly sensitive instruments, which aligns with the HAIRST project's requirements. The company's ARES and HADES programs showcase advancements in airborne ISR capabilities, including high-altitude platforms. However, there is no direct mention of experience with high-altitude infrared search and track systems. The company has a strong background in missile warning and defense, with capabilities that could be adapted for the HAIRST project. A key strength is the company's ability to provide end-to-end solutions and rapidly evolve capabilities to keep pace with evolving threats. The main gap appears to be the lack of explicit mention of experience with high-altitude platforms hosting infrared sensors for missile threat detection. The company's security clearances and experience with Controlled Unclassified Information (CUI) also align with the solicitation's requirements.",
+
+  "opportunity_required_skills": [
+
+    "infrared sensor prototypes",
+
+    "high altitude platforms",
+
+    "searching a large volume for incoming missile threats",
+
+    "generating high-resolution tracks",
+
+    "SECRET (or higher) Facility Clearance (FCL)",
+
+    "Controlled Unclassified Information (CUI)",
+
+    "development and demonstration"
+
+  ],
+
+  "company_skills": [
+
+    "infrared and missile warning systems",
+
+    "airborne ISR capabilities",
+
+    "high-altitude platforms",
+
+    "missile warning and defense",
+
+    "end-to-end solutions",
+
+    "rapid evolution of capabilities"
+
+  ],
+
+  "past_performance": [],
+
+  "citations": [
+
+    {
+
+      "document_title": "Document 3",
+
+      "section_or_page": "",
+
+      "excerpt": "L3Harris' solutions provide immediate and continuous global coverage of threats with highly sensitive instruments to find both dim and bright targets."
+
+    }
+
+  ],
+
+  "kb_retrieval_results": [
+
+    {
+
+      "index": 1,
+
+      "title": "Document 1",
+
+      "snippet": "{\"text\": \"# FEATURES\\n- Next-generation Army ISR technology\\n- Fly for up to 14 hours at mission altitudes above 41,000 feet\\n- Activate Long Range Precision Fires to counter long-range threats\\n- Capacity to add payloads, sensors and increase standoff ranges\\n- L3Harris\u2019 HADES solution aligns with requirements, offering a full-band system, ELINT and COMINT, with scaled SIGINT architecture\\n- Offers Technology Readiness Level (TRL9) scaled SIGINT solutions that reduce government development and ",
+
+      "source": "s3://m2024-company-data/test2/MockData/ims-isr-ARES-HADES-data-sheet.pdf",
+
+      "metadata": {
+
+        "x-amz-bedrock-kb-source-uri": "s3://m2024-company-data/test2/MockData/ims-isr-ARES-HADES-data-sheet.pdf",
+
+        "x-amz-bedrock-kb-document-page-number": 1.0,
+
+        "x-amz-bedrock-kb-data-source-id": "YMJTCX8BDD"
+
+      },
+
+      "location": {
+
+        "s3Location": {
+
+          "uri": "s3://m2024-company-data/test2/MockData/ims-isr-ARES-HADES-data-sheet.pdf"
+
+        },
+
+        "type": "S3"
+
+      }
+
+    }
+
+  ],
+
+  "input_key": "2025-09-15/HQ0860-25-S-C004.json",
+
+  "timestamp": "2025-10-06T21:02:05.799278+00:00",
+
+  "postedDate": "2025-09-15",
+
+  "type": "Special Notice",
+
+  "responseDeadLine": "2025-10-30T17:00:00-05:00",
+
+  "pointOfContact.fullName": "mda.redstone.mbx.mda-hairst@mail.mil",
+
+  "pointOfContact.email": "mda.redstone.mbx.mda-hairst@mail.mil",
+
+  "pointOfContact.phone": null,
+
+  "placeOfPerformance.city.name": null,
+
+  "placeOfPerformance.state.name": null,
+
+  "placeOfPerformance.country.name": "UNITED STATES",
+
+  "uiLink": "https://sam.gov/workspace/contract/opp/e297a6044bf34e4e9aac3f297b2813e8/view"
+
+}
+-------------
+
+
+**********************
+
+After Building tasks.... need to combinere and deploy :
+
+There are now serveral lambda functions and files in  src\lambdas\sam-sqs-generate-match-reports
+I need to updated my deployment so i can test. What lambda files should be used to deploy to AWS. 
+
+created a New Deployment folder.... 
+
+*** (created task6-new-deployment_session.md) 
+
+Now at 337/500 credits 
+
+
+aws s3 cp s3://ktest-sam-extracted-json-resources-dev/FA813725R0035/FA813725R0035_opportunity.json s3://ktest-sam-extracted-json-resources-dev/FA813725R0035/FA813725R0035_opportunity.json 
+aws s3 cp s3://ktest-sam-extracted-json-resources-dev/36C26126R0001/36C26126R0001_opportunity.json s3://ktest-sam-extracted-json-resources-dev/36C26126R0001/36C26126R0001_opportunity.json
+
+aws lambda update-function-code  --function-name ktest-sam-sqs-generate-match-reports-dev  --zip-file fileb://lambda-deployment-package-v4-attachments-fixed.zip --region us-east-1
+
+aws cloudformation update-stack   --stack-name ai-rfp-response-agent-phase2-dev   --template-body file://infrastructure/cloudformation/lambda-functions.yaml  --capabilities CAPABILITY_IAM --region us-east-1
+
+
+
+
+#### 
+
+Testing datasets for hullunications 
+
+m-sam-extracted-json-resources-test
+
+
+##Should have been scored bad 
+##aws s3 rm s3://ktest-sam-extracted-json-resources-dev/36C24526Q0057/36C24526Q0057.json; 
+aws s3  cp s3://m-sam-extracted-json-resources-test/2025-10-08/36C24526Q0057.json s3://ktest-sam-extracted-json-resources-dev/36C24526Q0057/36C24526Q0057.json
+##aws s3 rm s3://ktest-sam-extracted-json-resources-dev/SP330025R5002/SP330025R5002.json;
+aws s3 cp s3://m-sam-extracted-json-resources-test/2025-10-08/SP330025R5002.json s3://ktest-sam-extracted-json-resources-dev/SP330025R5002/SP330025R5002.json
+
+### did not do the complete test... only 1st part of extraction
+
+Currrently at 379/500 credits
+
+## asking to fix results 
+
+403/500 after fixing match results 
+
+
+---- testing good data 
+
+##aws s3 cp s3://m-sam-extracted-json-resources-test/2024-12-05/DARPA-PA-25-03.json s3://s3://ktest-sam-extracted-json-resources-dev/2024-12-05/DARPA-PA-25-03.json
+##aws s3 cp s3://m-sam-extracted-json-resources-test/2024-11-19/HR001125S0001.json s3://s3://ktest-sam-extracted-json-resources-dev/2024-11-19/HR001125S0001.json 
+##aws s3 cp s3://m-sam-extracted-json-resources-test/2024-12-09/HR001125S0002.json s3://s3://ktest-sam-extracted-json-resources-dev/2024-12-09/HR001125S0002.json
+
+aws s3 cp s3://m-sam-extracted-json-resources-test/ s3://ktest-sam-extracted-json-resources-dev/ \
+  --recursive --exclude="*" --include="2024-12-05/DARPA-PA-25-03*" --include="2024-11-19/HR001125S0001*"   --dryrun 
+
+aws s3 cp s3://ktest-sam-extracted-json-resources-dev/2024-11-19/HR001125S0001.json  s3://ktest-sam-extracted-json-resources-dev/2024-11-19/HR001125S0001.json  
+
+422/500 credits remain after Match fixes and Run updates (to match external format)
+
+-------------------------
+
+"in the folder external/sam-merge-and-archive-result-logs/code/lambda_function.py, there is code that should be run EventBridge every 5 minutes. Can you deploy the code into this baseline and make any minor changes?
+You will need to build the eventbridge cron job
+The code already has an env variable S3_OUT_BUCKET. In this case it should point to the data in s3://ktest-sam-matching-out-runs-dev/runs/
+"
+
+*** selected VIBE codeing *** as this is more direct. , and less Kiro credits 
+
+
+
+
+------
+429 out of 500
+
+in the folder external/sam-produce-website/lambda_function.py, there is code that was built externally to produce a website. There was a task 9 that produced the same thing, however the new code provided already works and should be able to work with the data that is generated in s3://ktest-sam-matching-out-runs-dev/runs, and write the data to s3://ktest-sam-website-dev. These should already be represented in the enviroment variables.  Please proceed to review, update and deploy this code.
+
+
+
+--- 
+
+while this verison of the webpage works, it is not very useful as it
+does not have as much information BY record as the version at external/sam-produce-website/lambda_function.py has. 
+Can you update the design and content of the webpage to have the EXACT LOOK AND FEEL AND CONTENT of the external/sam-produce-website/lambda_function.py
+
+*** count 455/500 credits
+
+-- last updates, cleanup, documentation 
+
+--- final count 458/500 credits

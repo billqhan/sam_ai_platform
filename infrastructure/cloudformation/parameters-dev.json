@@ -16,6 +16,10 @@
     "ParameterValue": "contact@yourcompany.com"
   },
   {
+    "ParameterKey": "BucketPrefix",
+    "ParameterValue": "ktest"
+  },
+  {
     "ParameterKey": "TemplatesBucketName",
     "ParameterValue": "your-cloudformation-templates-bucket"
   },

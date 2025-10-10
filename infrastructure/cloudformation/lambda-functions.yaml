@@ -98,6 +98,14 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - s3:ListBucket
+                Resource: 
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-data-in-${Environment}'
+                    - !Sub 'arn:aws:s3:::sam-data-in-${Environment}'
+              - Effect: Allow
+                Action:
                   - s3:GetObject
                 Resource: !If 
                   - HasBucketPrefix
@@ -149,6 +157,14 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: 
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-extracted-json-resources-${Environment}'
+                    - !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}'
               - Effect: Allow
                 Action:
                   - s3:GetObject
@@ -206,6 +222,14 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: 
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-matching-out-sqs-${Environment}'
+                    - !Sub 'arn:aws:s3:::sam-matching-out-sqs-${Environment}'
               - Effect: Allow
                 Action:
                   - s3:GetObject
@@ -293,10 +317,17 @@ Resources:
                 Action:
                   - s3:PutObject
                   - s3:PutObjectAcl
-                Resource: !If 
-                  - HasBucketPrefix
-                  - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-website-${Environment}/*'
-                  - !Sub 'arn:aws:s3:::sam-website-${Environment}/*'
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-website-${Environment}'
+                    - !Sub 'arn:aws:s3:::sam-website-${Environment}'
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-website-${Environment}/*'
+                    - !Sub 'arn:aws:s3:::sam-website-${Environment}/*'
 
   # Lambda Functions
   SamGovDailyDownloadFunction:
@@ -398,8 +429,10 @@ Resources:
           MAX_ATTACHMENT_FILES: '4'
           MAX_DESCRIPTION_CHARS: '20000'
           MAX_ATTACHMENT_CHARS: '16000'
-          MODEL_ID_DESC: 'anthropic.claude-3-sonnet-20240229-v1:0'
-          MODEL_ID_MATCH: 'anthropic.claude-3-sonnet-20240229-v1:0'
+          MODEL_ID_DESC: 'amazon.nova-pro-v1:0'
+          MODEL_ID_MATCH: 'amazon.nova-pro-v1:0'
+          MAX_TOKENS: '8000'
+          TEMPERATURE: '0.1'
           DEBUG_MODE: 'true'
           PROCESS_DELAY_SECONDS: '60'
           X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-sqs-generate-match-reports'
@@ -454,11 +487,11 @@ Resources:
         Mode: Active
       Environment:
         Variables:
-          RUNS_BUCKET: !If 
+          S3_OUT_BUCKET: !If 
             - HasBucketPrefix
             - !Sub '${BucketPrefix}-sam-matching-out-runs-${Environment}'
             - !Sub 'sam-matching-out-runs-${Environment}'
-          ARCHIVE_FOLDER: 'archive'
+          active: 'true'
           X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-merge-and-archive-result-logs'
 
   SamProduceWebReportsFunction:

@@ -419,3 +419,22 @@ Can you update the design and content of the webpage to have the EXACT LOOK AND 
 -- last updates, cleanup, documentation 
 
 --- final count 458/500 credits
+
+
+
+
+
+
+I notice for the lambda function ktest-sam-sqs-geneate-match-reports, 
+the enviroment variable "MATCH_THRESHOLD" is missing (default set to 0.5). 
+Anything equal to or above this value should writting to "matches", 
+anything below sent to "no_matches". 
+The logic should already be in the code, and all the data is going to "matches" 
+because no value is set. Please correct this.  
+
+
+
+
+I see there are run results in  s3://ktest-sam-matching-out-runs-dev/runs/, 
+but no website have been generated in ktest-sam-website-dev 
+Can you please check the existing code to see why this is not happening and fix the problem

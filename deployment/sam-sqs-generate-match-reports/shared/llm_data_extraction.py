@@ -85,11 +85,10 @@ class LLMDataExtractor:
             logger.error(f"Unexpected error reading opportunity data: {str(e)}")
             raise
     
-    @handle_aws_error
     def read_attachment_files(self, bucket: str, opportunity_id: str) -> List[str]:
         """
         Read attachment files for an opportunity from S3.
-        Limits the number of files processed based on MAX_ATTACHMENT_FILES.
+        Uses direct file access instead of listing to avoid permission issues.
         
         Args:
             bucket: S3 bucket name
@@ -98,71 +97,124 @@ class LLMDataExtractor:
         Returns:
             List of attachment content strings (limited by max_attachment_files)
         """
-        try:
-            # List objects with the opportunity ID prefix to find attachments
-            prefix = f"{opportunity_id}/"
-            logger.info(f"Looking for attachments with prefix: {prefix}")
-            
-            response = self.s3_client.list_objects_v2(
-                Bucket=bucket,
-                Prefix=prefix,
-                MaxKeys=self.max_attachment_files * 2  # Get more to filter
-            )
-            
-            objects = response.get('Contents', [])
-            attachment_files = []
-            
-            # Filter for attachment files (exclude the main opportunity.json)
-            for obj in objects:
-                key = obj['Key']
-                if not key.endswith('opportunity.json') and not key.endswith('/'):
-                    attachment_files.append(key)
-            
-            # Limit to max_attachment_files
-            attachment_files = attachment_files[:self.max_attachment_files]
-            
-            logger.info(f"Found {len(attachment_files)} attachment files to process")
-            
-            # Read content from each attachment file
-            attachments_content = []
-            for file_key in attachment_files:
+        # Common attachment file patterns to try
+        attachment_patterns = [
+            f"{opportunity_id}/{opportunity_id}_attachment.txt",
+            f"{opportunity_id}/{opportunity_id}_attachment.pdf",
+            f"{opportunity_id}/{opportunity_id}_attachment.doc",
+            f"{opportunity_id}/{opportunity_id}_attachment.docx",
+            f"{opportunity_id}/{opportunity_id}_solicitation.pdf",
+            f"{opportunity_id}/{opportunity_id}_requirements.txt",
+            f"{opportunity_id}/{opportunity_id}_specifications.txt",
+            f"{opportunity_id}/attachment.txt",
+            f"{opportunity_id}/attachment.pdf",
+            f"{opportunity_id}/solicitation.pdf",
+            f"{opportunity_id}/requirements.txt",
+            f"{opportunity_id}/specifications.txt",
+            f"{opportunity_id}/attachment_1.txt",
+            f"{opportunity_id}/attachment_2.txt",
+            f"{opportunity_id}/attachment_3.txt",
+        ]
+        
+        logger.info(f"Looking for attachments using direct file access for opportunity: {opportunity_id}")
+        
+        attachments_content = []
+        files_found = 0
+        
+        for file_key in attachment_patterns:
+            if files_found >= self.max_attachment_files:
+                break
+                
+            try:
+                logger.debug(f"Trying to read attachment: {file_key}")
+                
+                # Try to read the file directly
+                file_response = self.s3_client.get_object(Bucket=bucket, Key=file_key)
+                file_content = file_response['Body'].read()
+                
+                # Try to decode as text (handle different file types)
                 try:
-                    logger.debug(f"Reading attachment: {file_key}")
-                    
-                    file_response = self.s3_client.get_object(Bucket=bucket, Key=file_key)
-                    file_content = file_response['Body'].read()
-                    
-                    # Try to decode as text (handle different file types)
+                    content_text = file_content.decode('utf-8')
+                except UnicodeDecodeError:
+                    # For binary files, try to extract text or skip
                     try:
-                        content_text = file_content.decode('utf-8')
-                    except UnicodeDecodeError:
-                        # For binary files, try to extract text or skip
-                        try:
-                            content_text = file_content.decode('latin-1')
-                        except:
-                            logger.warning(f"Skipping binary file: {file_key}")
-                            continue
-                    
-                    # Add file identifier and content
-                    attachment_text = f"=== FILE: {file_key.split('/')[-1]} ===\n{content_text}\n"
-                    attachments_content.append(attachment_text)
-                    
-                    logger.debug(f"Successfully read attachment: {len(content_text)} characters")
-                    
-                except Exception as e:
-                    logger.warning(f"Failed to read attachment {file_key}: {str(e)}")
+                        content_text = file_content.decode('latin-1')
+                    except:
+                        logger.debug(f"Skipping binary file: {file_key}")
+                        continue
+                
+                # Add file identifier and content
+                attachment_text = f"=== FILE: {file_key.split('/')[-1]} ===\n{content_text}\n"
+                attachments_content.append(attachment_text)
+                files_found += 1
+                
+                logger.info(f"Successfully read attachment: {file_key} ({len(content_text)} characters)")
+                
+            except ClientError as e:
+                error_code = e.response['Error']['Code']
+                if error_code == 'NoSuchKey':
+                    # File doesn't exist, continue to next pattern
+                    logger.debug(f"Attachment not found: {file_key}")
                     continue
-            
-            logger.info(f"Successfully read {len(attachments_content)} attachment files")
-            return attachments_content
-            
-        except ClientError as e:
-            error_code = e.response['Error']['Code']
-            logger.error(f"Failed to list/read attachments from S3: {error_code}")
-            return []  # Return empty list on S3 errors
-        except Exception as e:
-            logger.error(f"Unexpected error reading attachments: {str(e)}")
-            return []
+                elif error_code == 'AccessDenied':
+                    logger.warning(f"Access denied for attachment: {file_key}")
+                    continue
+                else:
+                    logger.warning(f"Error reading attachment {file_key}: {error_code}")
+                    continue
+            except Exception as e:
+                logger.warning(f"Unexpected error reading attachment {file_key}: {str(e)}")
+                continue
+        
+        # If no attachments found with direct access, try listing approach as fallback
+        if len(attachments_content) == 0:
+            logger.info("No attachments found with direct access, trying list approach as fallback")
+            try:
+                prefix = f"{opportunity_id}/"
+                response = self.s3_client.list_objects_v2(
+                    Bucket=bucket,
+                    Prefix=prefix,
+                    MaxKeys=self.max_attachment_files * 2
+                )
+                
+                objects = response.get('Contents', [])
+                for obj in objects:
+                    key = obj['Key']
+                    if not key.endswith('opportunity.json') and not key.endswith('/') and files_found < self.max_attachment_files:
+                        try:
+                            file_response = self.s3_client.get_object(Bucket=bucket, Key=key)
+                            file_content = file_response['Body'].read()
+                            
+                            try:
+                                content_text = file_content.decode('utf-8')
+                            except UnicodeDecodeError:
+                                try:
+                                    content_text = file_content.decode('latin-1')
+                                except:
+                                    logger.debug(f"Skipping binary file: {key}")
+                                    continue
+                            
+                            attachment_text = f"=== FILE: {key.split('/')[-1]} ===\n{content_text}\n"
+                            attachments_content.append(attachment_text)
+                            files_found += 1
+                            
+                            logger.info(f"Successfully read attachment via listing: {key} ({len(content_text)} characters)")
+                            
+                        except Exception as e:
+                            logger.debug(f"Failed to read listed attachment {key}: {str(e)}")
+                            continue
+                            
+            except ClientError as e:
+                error_code = e.response['Error']['Code']
+                if error_code == 'AccessDenied':
+                    logger.debug("List objects access denied - this is expected if Lambda only has GetObject permissions")
+                else:
+                    logger.debug(f"List objects failed: {error_code}")
+            except Exception as e:
+                logger.debug(f"List objects approach failed: {str(e)}")
+        
+        logger.info(f"Successfully read {len(attachments_content)} attachment files")
+        return attachments_content
     
     def truncate_content(self, content: str, max_chars: int, content_type: str = "content") -> str:
         """
@@ -343,7 +395,7 @@ class BedrockLLMClient:
             logger.error(f"Failed to initialize Bedrock client: {str(e)}")
             return False
     
-    def extract_opportunity_info(self, description: str, attachment_content: str) -> Tuple[str, List[str]]:
+    def extract_opportunity_info(self, description: str, attachment_content: str) -> Tuple[str, List[str], bool]:
         """
         Extract opportunity information using LLM.
         
@@ -352,7 +404,7 @@ class BedrockLLMClient:
             attachment_content: Attachment content
             
         Returns:
-            Tuple of (enhanced_description, opportunity_required_skills)
+            Tuple of (enhanced_description, opportunity_required_skills, success)
         """
         try:
             prompt = self.create_opportunity_enhancement_prompt(description, attachment_content)
@@ -369,6 +421,29 @@ class BedrockLLMClient:
                             "content": prompt
                         }
                     ]
+                }
+            elif 'llama' in self.model_id_desc.lower():
+                # Llama model format
+                request_body = {
+                    "prompt": prompt,
+                    "max_gen_len": self.max_tokens,
+                    "temperature": self.temperature,
+                    "top_p": 0.9
+                }
+            elif 'nova' in self.model_id_desc.lower():
+                # Amazon Nova model format
+                request_body = {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [{"text": prompt}]
+                        }
+                    ],
+                    "inferenceConfig": {
+                        "max_new_tokens": self.max_tokens,
+                        "temperature": self.temperature,
+                        "top_p": 0.9
+                    }
                 }
             else:
                 # Titan model format
@@ -392,6 +467,12 @@ class BedrockLLMClient:
             response_body = json.loads(response['body'].read())
             if 'claude' in self.model_id_desc.lower():
                 response_text = response_body['content'][0]['text']
+            elif 'llama' in self.model_id_desc.lower():
+                # Llama model response format
+                response_text = response_body['generation']
+            elif 'nova' in self.model_id_desc.lower():
+                # Amazon Nova model response format
+                response_text = response_body['output']['message']['content'][0]['text']
             else:
                 # Titan model response format
                 response_text = response_body['results'][0]['outputText']
@@ -399,16 +480,16 @@ class BedrockLLMClient:
             # Parse the response
             enhanced_description, skills = self.parse_opportunity_enhancement_response(response_text)
             
-            return enhanced_description, skills
+            return enhanced_description, skills, True
             
         except Exception as e:
             logger.error(f"Failed to extract opportunity info: {str(e)}")
-            # Return fallback
+            # Return fallback with failure indicator
             fallback_description = f"BUSINESS SUMMARY:\n{description}\n\nNON-TECHNICAL SUMMARY:\nProcessing failed - manual review required"
-            return fallback_description, ["Manual review required"]
+            return fallback_description, ["Manual review required"], False
     
     def calculate_company_match(self, enhanced_description: str, opportunity_required_skills: List[str],
-                              error_handler: ErrorHandler = None, opportunity_id: str = None) -> Dict[str, Any]:
+                              error_handler: ErrorHandler = None, opportunity_id: str = None) -> Tuple[Dict[str, Any], bool]:
         """
         Calculate company match using LLM.
         
@@ -453,6 +534,29 @@ PAST_PERFORMANCE: ["example1", "example2"]
                         }
                     ]
                 }
+            elif 'llama' in self.model_id_match.lower():
+                # Llama model format
+                request_body = {
+                    "prompt": prompt,
+                    "max_gen_len": self.max_tokens,
+                    "temperature": self.temperature,
+                    "top_p": 0.9
+                }
+            elif 'nova' in self.model_id_match.lower():
+                # Amazon Nova model format
+                request_body = {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [{"text": prompt}]
+                        }
+                    ],
+                    "inferenceConfig": {
+                        "max_new_tokens": self.max_tokens,
+                        "temperature": self.temperature,
+                        "top_p": 0.9
+                    }
+                }
             else:
                 # Titan model format
                 request_body = {
@@ -475,6 +579,12 @@ PAST_PERFORMANCE: ["example1", "example2"]
             response_body = json.loads(response['body'].read())
             if 'claude' in self.model_id_match.lower():
                 response_text = response_body['content'][0]['text']
+            elif 'llama' in self.model_id_match.lower():
+                # Llama model response format
+                response_text = response_body['generation']
+            elif 'nova' in self.model_id_match.lower():
+                # Amazon Nova model response format
+                response_text = response_body['output']['message']['content'][0]['text']
             else:
                 # Titan model response format
                 response_text = response_body['results'][0]['outputText']
@@ -482,11 +592,11 @@ PAST_PERFORMANCE: ["example1", "example2"]
             # Parse match result
             match_result = self.parse_match_response(response_text, opportunity_required_skills)
             
-            return match_result
+            return match_result, True
             
         except Exception as e:
             logger.error(f"Failed to calculate company match: {str(e)}")
-            # Return fallback
+            # Return fallback with failure indicator
             return {
                 'score': 0.0,
                 'rationale': f'Match calculation failed: {str(e)}',
@@ -495,7 +605,7 @@ PAST_PERFORMANCE: ["example1", "example2"]
                 'past_performance': [],
                 'citations': [],
                 'kb_retrieval_results': []
-            }
+            }, False
     
     def create_opportunity_enhancement_prompt(self, opportunity_description: str, attachment_content: str) -> str:
         """

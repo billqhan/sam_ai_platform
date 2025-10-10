@@ -305,7 +305,7 @@ def process_sqs_record(record: Dict[str, Any],
             )
             
             start_time = time.time()
-            enhanced_description, opportunity_required_skills = llm_client.extract_opportunity_info(
+            enhanced_description, opportunity_required_skills, llm_success = llm_client.extract_opportunity_info(
                 description, attachment_content
             )
             processing_time = time.time() - start_time
@@ -321,8 +321,12 @@ def process_sqs_record(record: Dict[str, Any],
                 }
             )
             
-            llm_processing_status = "success"
-            logger.info(f"✅ LLM opportunity extraction successful")
+            if llm_success:
+                llm_processing_status = "success"
+                logger.info(f"✅ LLM opportunity extraction successful")
+            else:
+                llm_processing_status = "failed"
+                logger.warning(f"⚠️ LLM opportunity extraction failed, using fallback")
             
         except Exception as e:
             # Enhanced error logging for LLM failures (Requirement 1.5)
@@ -370,7 +374,7 @@ def process_sqs_record(record: Dict[str, Any],
             )
             
             start_time = time.time()
-            company_match_result = llm_client.calculate_company_match(
+            company_match_result, match_success = llm_client.calculate_company_match(
                 enhanced_description, opportunity_required_skills,
                 error_handler=error_handler, opportunity_id=opportunity_id
             )
@@ -388,8 +392,12 @@ def process_sqs_record(record: Dict[str, Any],
                 }
             )
             
-            match_processing_status = "success"
-            logger.info(f"✅ Company match calculation successful: score={company_match_result['score']}")
+            if match_success:
+                match_processing_status = "success"
+                logger.info(f"✅ Company match calculation successful: score={company_match_result['score']}")
+            else:
+                match_processing_status = "failed"
+                logger.warning(f"⚠️ Company match calculation failed: score={company_match_result['score']}")
             
         except Exception as e:
             # Enhanced error logging for match calculation failures

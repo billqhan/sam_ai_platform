@@ -12,12 +12,23 @@ from typing import Dict, Any, List
 
 # Add shared modules to path
 sys.path.append('/opt/python')
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'shared'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
 
-from llm_data_extraction import get_llm_data_extractor, get_bedrock_llm_client
-from config import config
-from aws_clients import aws_clients
-from error_handling import ErrorHandler
+try:
+    from shared.llm_data_extraction import get_llm_data_extractor, get_bedrock_llm_client
+    from shared.config import config
+    from shared.aws_clients import aws_clients
+    from shared.error_handling import ErrorHandler
+except ImportError as e:
+    # Fallback imports for Lambda environment
+    import sys
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'shared'))
+    
+    from llm_data_extraction import get_llm_data_extractor, get_bedrock_llm_client
+    from config import config
+    from aws_clients import aws_clients
+    from error_handling import ErrorHandler
 
 # Configure logging
 logger = logging.getLogger()
@@ -298,6 +309,7 @@ def process_sqs_record(record: Dict[str, Any],
                 description, attachment_content
             )
             processing_time = time.time() - start_time
+            llm_success = True  # If we get here without exception, it was successful
             
             # Log LLM response details
             error_handler.log_llm_response(
@@ -310,8 +322,12 @@ def process_sqs_record(record: Dict[str, Any],
                 }
             )
             
-            llm_processing_status = "success"
-            logger.info(f"✅ LLM opportunity extraction successful")
+            if llm_success:
+                llm_processing_status = "success"
+                logger.info(f"✅ LLM opportunity extraction successful")
+            else:
+                llm_processing_status = "failed"
+                logger.warning(f"⚠️ LLM opportunity extraction failed, using fallback")
             
         except Exception as e:
             # Enhanced error logging for LLM failures (Requirement 1.5)
@@ -359,7 +375,7 @@ def process_sqs_record(record: Dict[str, Any],
             )
             
             start_time = time.time()
-            company_match_result = llm_client.calculate_company_match(
+            company_match_result, match_success = llm_client.calculate_company_match(
                 enhanced_description, opportunity_required_skills,
                 error_handler=error_handler, opportunity_id=opportunity_id
             )
@@ -377,8 +393,12 @@ def process_sqs_record(record: Dict[str, Any],
                 }
             )
             
-            match_processing_status = "success"
-            logger.info(f"✅ Company match calculation successful: score={company_match_result['score']}")
+            if match_success:
+                match_processing_status = "success"
+                logger.info(f"✅ Company match calculation successful: score={company_match_result['score']}")
+            else:
+                match_processing_status = "failed"
+                logger.warning(f"⚠️ Company match calculation failed: score={company_match_result['score']}")
             
         except Exception as e:
             # Enhanced error logging for match calculation failures
@@ -548,27 +568,10 @@ def create_enhanced_match_result(opportunity_data: Dict[str, Any],
                                match_processing_status: str) -> Dict[str, Any]:
     """
     Create enhanced match result structure with comprehensive requirements compliance.
-    Ensures all required fields from requirements 4.1, 4.2, and 4.5 are included.
-    
-    Args:
-        opportunity_data: The opportunity JSON data
-        opportunity_id: Extracted opportunity ID
-        enhanced_description: LLM-processed enhanced description with structured sections
-        opportunity_required_skills: LLM-extracted skills list
-        company_match_result: Company matching results from Knowledge Base and LLM
-        attachment_content: Processed attachment content
-        source_bucket: Source S3 bucket
-        source_key: Source S3 key
-        message_id: SQS message ID
-        llm_processing_status: Status of LLM processing ("success" or "failed")
-        match_processing_status: Status of company match processing ("success" or "failed")
-        
-    Returns:
-        Enhanced match result dictionary with comprehensive field coverage
     """
     current_time = datetime.now()
     
-    # Extract SAM.gov metadata fields (Requirement 4.1)
+    # Extract SAM.gov metadata fields
     solicitation_number = opportunity_data.get('solicitationNumber', opportunity_id)
     notice_id = opportunity_data.get('noticeId', opportunity_id)
     title = opportunity_data.get('title', 'Unknown Title')
@@ -577,35 +580,45 @@ def create_enhanced_match_result(opportunity_data: Dict[str, Any],
     opportunity_type = opportunity_data.get('type', '')
     response_deadline = opportunity_data.get('responseDeadLine', '')
     
-    # Extract point of contact information (Requirement 4.1)
-    point_of_contact = opportunity_data.get('pointOfContact', {})
-    poc_full_name = point_of_contact.get('fullName', '')
-    poc_email = point_of_contact.get('email', '')
-    poc_phone = point_of_contact.get('phone', '')
+    # Extract point of contact information
+    point_of_contact = opportunity_data.get('pointOfContact', [])
+    if isinstance(point_of_contact, list) and len(point_of_contact) > 0:
+        poc_data = point_of_contact[0]
+        poc_full_name = poc_data.get('fullName', '')
+        poc_email = poc_data.get('email', '')
+        poc_phone = poc_data.get('phone', '')
+    elif isinstance(point_of_contact, dict):
+        poc_full_name = point_of_contact.get('fullName', '')
+        poc_email = point_of_contact.get('email', '')
+        poc_phone = point_of_contact.get('phone', '')
+    else:
+        poc_full_name = ''
+        poc_email = ''
+        poc_phone = ''
     
-    # Extract place of performance information (Requirement 4.1)
+    # Extract place of performance information
     place_of_performance = opportunity_data.get('placeOfPerformance', {})
     city_name = place_of_performance.get('city', {}).get('name', '')
     state_name = place_of_performance.get('state', {}).get('name', '')
     country_name = place_of_performance.get('country', {}).get('name', '')
     
-    # Generate UI link (Requirement 4.1)
+    # Generate UI link
     ui_link = f"https://sam.gov/opp/{notice_id}/view" if notice_id else ''
     
-    # Ensure enhanced_description has structured format (Requirement 4.2)
+    # Ensure enhanced_description has structured format
     if not enhanced_description or "BUSINESS SUMMARY:" not in enhanced_description:
         logger.warning("Enhanced description missing structured format, using fallback")
         enhanced_description = format_structured_description(enhanced_description, opportunity_data)
     
-    # Validate and format citations (Requirement 4.3)
+    # Validate and format citations
     citations = validate_and_format_citations(company_match_result.get('citations', []))
     
-    # Validate and format kb_retrieval_results (Requirement 4.4)
+    # Validate and format kb_retrieval_results
     kb_retrieval_results = validate_and_format_kb_results(company_match_result.get('kb_retrieval_results', []))
     
-    # Create the comprehensive match result structure (Requirements 4.1, 4.2, 4.5)
+    # Create the comprehensive match result structure
     match_result = {
-        # Core SAM.gov metadata fields (Requirement 4.1)
+        # Core SAM.gov metadata fields
         'solicitationNumber': solicitation_number,
         'noticeId': notice_id,
         'title': title,
@@ -614,20 +627,20 @@ def create_enhanced_match_result(opportunity_data: Dict[str, Any],
         'type': opportunity_type,
         'responseDeadLine': response_deadline,
         
-        # Point of contact fields (Requirement 4.1)
+        # Point of contact fields
         'pointOfContact.fullName': poc_full_name,
         'pointOfContact.email': poc_email,
         'pointOfContact.phone': poc_phone,
         
-        # Place of performance fields (Requirement 4.1)
+        # Place of performance fields
         'placeOfPerformance.city.name': city_name,
         'placeOfPerformance.state.name': state_name,
         'placeOfPerformance.country.name': country_name,
         
-        # UI link (Requirement 4.1)
+        # UI link
         'uiLink': ui_link,
         
-        # Enhanced description with structured format (Requirement 4.2)
+        # Enhanced description with structured format
         'enhanced_description': enhanced_description,
         
         # Company matching results
@@ -637,13 +650,13 @@ def create_enhanced_match_result(opportunity_data: Dict[str, Any],
         'company_skills': company_match_result.get('company_skills', []),
         'past_performance': company_match_result.get('past_performance', []),
         
-        # Citations with proper structure (Requirement 4.3)
+        # Citations with proper structure
         'citations': citations,
         
-        # Knowledge base retrieval results with comprehensive fields (Requirement 4.4)
+        # Knowledge base retrieval results with comprehensive fields
         'kb_retrieval_results': kb_retrieval_results,
         
-        # Processing metadata (Requirement 4.5)
+        # Processing metadata
         'input_key': source_key,
         'timestamp': current_time.isoformat(),
         
@@ -682,279 +695,146 @@ def format_structured_description(description: str, opportunity_data: Dict[str, 
     """
     Format description with structured Business Summary and Non-Technical Summary sections.
     Used as fallback when LLM processing fails to provide structured format.
-    
-    Args:
-        description: Original or partially processed description
-        opportunity_data: Original opportunity data for fallback content
-        
-    Returns:
-        Structured description with required sections
     """
     title = opportunity_data.get('title', 'Unknown Title')
-    original_description = opportunity_data.get('description', description)
+    original_description = opportunity_data.get('description', 'No description available')
     
-    # Create structured fallback description
-    structured_description = f"""BUSINESS SUMMARY:
+    # Truncate if too long
+    if len(original_description) > 2000:
+        original_description = original_description[:2000] + "... [truncated]"
+    
+    structured_description = f"""
+BUSINESS SUMMARY:
+{title}
 
-Purpose of the Solicitation: {title}
-
-Information Unique to the Project: {original_description[:300]}{'...' if len(original_description) > 300 else ''}
-
-Overall Description of the Work: {original_description[:500]}{'...' if len(original_description) > 500 else ''}
-
-Technical Capabilities, Specific Skills, or Experience Required: Not specified in available documentation - manual review required
+{original_description}
 
 NON-TECHNICAL SUMMARY:
+This opportunity requires analysis of the technical requirements and alignment with company capabilities. Manual review recommended due to processing limitations.
 
-Clearances Information: Not specified in available documentation
+TECHNICAL REQUIREMENTS:
+- Requirements extraction failed during processing
+- Manual review of opportunity documents recommended
+- Contact information available in opportunity metadata
 
-Technical Proposal Evaluation: Standard government evaluation criteria
-
-Security: Standard government security requirements
-
-Compliance: Federal contracting compliance requirements
-
-[Note: This is a structured fallback format. Original description: {description[:200]}{'...' if len(description) > 200 else ''}]"""
+EVALUATION CRITERIA:
+- Standard government contracting evaluation criteria apply
+- Specific criteria require manual extraction from opportunity documents
+"""
     
-    return structured_description
+    return structured_description.strip()
 
 
 def validate_and_format_citations(citations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Validate and format citations to ensure proper structure.
-    
-    Args:
-        citations: Raw citations from LLM response
-        
-    Returns:
-        Validated and formatted citations list
     """
     formatted_citations = []
     
-    for i, citation in enumerate(citations):
-        if not isinstance(citation, dict):
-            continue
-            
-        formatted_citation = {
-            'document_title': str(citation.get('document_title', f'Document {i+1}')),
-            'section_or_page': str(citation.get('section_or_page', 'Unknown Section')),
-            'excerpt': str(citation.get('excerpt', 'No excerpt provided'))
-        }
-        
-        # Ensure excerpt is not too long
-        if len(formatted_citation['excerpt']) > 500:
-            formatted_citation['excerpt'] = formatted_citation['excerpt'][:497] + '...'
-        
-        formatted_citations.append(formatted_citation)
+    for citation in citations:
+        if isinstance(citation, dict):
+            formatted_citation = {
+                'source': citation.get('source', 'Unknown Source'),
+                'content': citation.get('content', ''),
+                'relevance_score': float(citation.get('relevance_score', 0.0)),
+                'metadata': citation.get('metadata', {})
+            }
+            formatted_citations.append(formatted_citation)
     
     return formatted_citations
 
 
 def validate_and_format_kb_results(kb_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Validate and format knowledge base retrieval results with comprehensive fields.
-    
-    Args:
-        kb_results: Raw KB results from knowledge base query
-        
-    Returns:
-        Validated and formatted KB results with required fields
+    Validate and format knowledge base retrieval results.
     """
     formatted_results = []
     
-    for i, result in enumerate(kb_results):
-        if not isinstance(result, dict):
-            continue
-            
-        # Ensure all required fields are present with proper types
-        formatted_result = {
-            'index': int(result.get('index', i)),
-            'title': str(result.get('title', f'Document {i+1}')),
-            'snippet': str(result.get('snippet', 'No snippet available')),
-            'source': str(result.get('source', 'Unknown Source')),
-            'metadata': result.get('metadata', {}),
-            'location': result.get('location', {})
-        }
-        
-        # Ensure metadata is a dictionary
-        if not isinstance(formatted_result['metadata'], dict):
-            formatted_result['metadata'] = {}
-        
-        # Ensure location is a dictionary
-        if not isinstance(formatted_result['location'], dict):
-            formatted_result['location'] = {}
-        
-        # Ensure snippet is not too long
-        if len(formatted_result['snippet']) > 500:
-            formatted_result['snippet'] = formatted_result['snippet'][:497] + '...'
-        
-        # Add score if available
-        if 'score' in result:
-            formatted_result['score'] = float(result.get('score', 0.0))
-        
-        formatted_results.append(formatted_result)
+    for result in kb_results:
+        if isinstance(result, dict):
+            formatted_result = {
+                'content': result.get('content', ''),
+                'score': float(result.get('score', 0.0)),
+                'metadata': result.get('metadata', {}),
+                'source': result.get('source', 'Knowledge Base')
+            }
+            formatted_results.append(formatted_result)
     
     return formatted_results
 
 
-def write_error_record_to_s3(error_record: Dict[str, Any], 
-                            opportunity_id: str,
-                            sqs_bucket: str,
-                            error_handler: ErrorHandler):
-    """
-    Write error record to S3 errors folder for failed processing.
-    
-    Args:
-        error_record: The error record to write
-        opportunity_id: The opportunity ID that failed
-        sqs_bucket: Target bucket for error records
-        error_handler: Error handler for logging
-    """
-    try:
-        s3_client = aws_clients.s3
-        current_time = datetime.now()
-        
-        # Write to errors folder in SQS bucket
-        current_date = current_time.strftime('%Y-%m-%d')
-        error_key = f"{current_date}/errors/{opportunity_id}_error.json"
-        
-        logger.info(f"📍 Writing error record to S3:")
-        logger.info(f"  Bucket: {sqs_bucket}")
-        logger.info(f"  Key: {error_key}")
-        
-        error_record_json = json.dumps(error_record, indent=2, default=str)
-        s3_client.put_object(
-            Bucket=sqs_bucket,
-            Key=error_key,
-            Body=error_record_json,
-            ContentType='application/json'
-        )
-        
-        # Log successful error record write
-        error_handler.log_s3_operation("write", sqs_bucket, error_key, 
-                                     success=True, file_size=len(error_record_json))
-        
-        logger.info("✅ Successfully wrote error record to S3")
-        
-    except Exception as e:
-        # Log failed error record write
-        error_handler.log_s3_operation("write", sqs_bucket, 
-                                     error_key if 'error_key' in locals() else 'unknown', 
-                                     success=False, error=e)
-        
-        error_handler.log_error(opportunity_id, e, {
-            'stage': 'error_record_writing',
-            'error_key': error_key if 'error_key' in locals() else 'unknown'
-        })
-        logger.error(f"Failed to write error record to S3: {str(e)}")
-
-
-def write_results_to_s3(match_result: Dict[str, Any], 
+def write_results_to_s3(match_result: Dict[str, Any],
                        opportunity_id: str,
-                       sqs_bucket: str, 
+                       sqs_bucket: str,
                        runs_bucket: str,
-                       error_handler: ErrorHandler = None) -> tuple:
+                       error_handler: ErrorHandler) -> tuple:
     """
-    Write match results and run summary to S3 buckets.
-    
-    Args:
-        match_result: The match result data
-        opportunity_id: The opportunity ID
-        sqs_bucket: Target bucket for match results
-        runs_bucket: Target bucket for run summaries
-        
-    Returns:
-        Tuple of (sqs_key, runs_key)
+    Write match results to S3 buckets.
     """
-    s3_client = aws_clients.s3
     current_time = datetime.now()
     
-    # Determine category based on score
-    is_match = match_result.get('score', 0.0) >= config.processing.match_threshold
-    category = 'matches' if is_match else 'no_matches'
-    
-    # Write to SQS bucket
-    current_date = current_time.strftime('%Y-%m-%d')
-    sqs_key = f"{current_date}/{category}/{opportunity_id}.json"
-    
-    logger.info(f"📍 Writing match result to SQS bucket:")
-    logger.info(f"  Bucket: {sqs_bucket}")
-    logger.info(f"  Key: {sqs_key}")
+    # Create S3 keys
+    sqs_key = f"{current_time.strftime('%Y-%m-%d')}/matches/{opportunity_id}.json"
+    runs_key = f"runs/{current_time.strftime('%Y%m%dt%H%MZ')}_{opportunity_id}.json"
     
     try:
-        match_result_json = json.dumps(match_result, indent=2, default=str)
-        s3_client.put_object(
+        # Write to SQS bucket
+        error_handler.log_s3_operation("write", sqs_bucket, sqs_key)
+        aws_clients.s3.put_object(
             Bucket=sqs_bucket,
             Key=sqs_key,
-            Body=match_result_json,
+            Body=json.dumps(match_result, indent=2),
             ContentType='application/json'
         )
+        error_handler.log_s3_operation("write", sqs_bucket, sqs_key, success=True)
         
-        # Log successful S3 write operation
-        if error_handler:
-            error_handler.log_s3_operation("write", sqs_bucket, sqs_key, 
-                                         success=True, file_size=len(match_result_json))
+        # Create run summary
+        run_summary = {
+            'run_id': f"{current_time.strftime('%Y%m%dt%H%M%S')}_{opportunity_id}",
+            'timestamp': current_time.isoformat(),
+            'opportunity_id': opportunity_id,
+            'match_score': match_result.get('score', 0.0),
+            'processing_status': 'success'
+        }
         
-        logger.info("✅ Successfully wrote match result to SQS bucket")
-        
-    except Exception as e:
-        # Log failed S3 write operation
-        if error_handler:
-            error_handler.log_s3_operation("write", sqs_bucket, sqs_key, 
-                                         success=False, error=e)
-        raise
-    
-    # Create run summary
-    run_summary = {
-        'run_id': f"{current_time.strftime('%Y%m%dt%H%M%S')}_{opportunity_id}",
-        'timestamp': current_time.isoformat(),
-        'date_prefix': current_time.strftime('%Y%m%d'),
-        'solicitation_id': match_result.get('solicitationNumber', opportunity_id),
-        'notice_id': match_result.get('noticeId', opportunity_id),
-        'title': match_result.get('title', 'Unknown'),
-        'category': category,
-        'match_score': match_result.get('score', 0.0),
-        'is_match': is_match,
-        'processing_status': 'success',
-        'llm_processing_status': match_result.get('processing_metadata', {}).get('llm_processing_status', 'unknown'),
-        'input_key': match_result.get('input_key', ''),
-        'attachments_processed': match_result.get('processing_metadata', {}).get('attachment_content_length', 0) > 0,
-        'enhanced_description_length': len(match_result.get('enhanced_description', '')),
-        'opportunity_required_skills_count': len(match_result.get('opportunity_required_skills', [])),
-        'company_skills_count': len(match_result.get('company_skills', [])),
-        'citations_count': len(match_result.get('citations', [])),
-        'kb_retrieval_results_count': len(match_result.get('kb_retrieval_results', []))
-    }
-    
-    # Write to Runs bucket
-    timestamp = current_time.strftime('%Y%m%dt%H%MZ')
-    runs_key = f"runs/{timestamp}_{opportunity_id}.json"
-    
-    logger.info(f"📍 Writing run summary to Runs bucket:")
-    logger.info(f"  Bucket: {runs_bucket}")
-    logger.info(f"  Key: {runs_key}")
-    
-    try:
-        run_summary_json = json.dumps(run_summary, indent=2, default=str)
-        s3_client.put_object(
+        # Write to runs bucket
+        error_handler.log_s3_operation("write", runs_bucket, runs_key)
+        aws_clients.s3.put_object(
             Bucket=runs_bucket,
             Key=runs_key,
-            Body=run_summary_json,
+            Body=json.dumps(run_summary, indent=2),
             ContentType='application/json'
         )
+        error_handler.log_s3_operation("write", runs_bucket, runs_key, success=True)
         
-        # Log successful S3 write operation
-        if error_handler:
-            error_handler.log_s3_operation("write", runs_bucket, runs_key, 
-                                         success=True, file_size=len(run_summary_json))
-        
-        logger.info("✅ Successfully wrote run summary to Runs bucket")
+        return sqs_key, runs_key
         
     except Exception as e:
-        # Log failed S3 write operation
-        if error_handler:
-            error_handler.log_s3_operation("write", runs_bucket, runs_key, 
-                                         success=False, error=e)
+        error_handler.log_s3_operation("write", sqs_bucket, sqs_key, success=False, error=e)
+        error_handler.log_s3_operation("write", runs_bucket, runs_key, success=False, error=e)
         raise
+
+
+def write_error_record_to_s3(error_record: Dict[str, Any],
+                           opportunity_id: str,
+                           sqs_bucket: str,
+                           error_handler: ErrorHandler):
+    """
+    Write error record to S3 bucket.
+    """
+    current_time = datetime.now()
+    error_key = f"{current_time.strftime('%Y-%m-%d')}/errors/{opportunity_id}.json"
     
-    return sqs_key, runs_key
+    try:
+        error_handler.log_s3_operation("write", sqs_bucket, error_key)
+        aws_clients.s3.put_object(
+            Bucket=sqs_bucket,
+            Key=error_key,
+            Body=json.dumps(error_record, indent=2),
+            ContentType='application/json'
+        )
+        error_handler.log_s3_operation("write", sqs_bucket, error_key, success=True)
+        
+    except Exception as e:
+        error_handler.log_s3_operation("write", sqs_bucket, error_key, success=False, error=e)
+        logger.error(f"Failed to write error record to S3: {e}")

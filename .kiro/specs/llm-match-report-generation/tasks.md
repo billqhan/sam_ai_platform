@@ -109,7 +109,15 @@
   - Test error handling scenarios and retry logic
   - _Requirements: 1.1, 1.2, 2.1, 2.2, 3.1, 3.2_
 
-- [ ]* 8. Add integration tests for end-to-end processing
+- [x] 8. Fix hallucination issue when no knowledge base data is available
+  - Implement validation to check if kb_retrieval_results is empty before generating match rationale
+  - Add logic to set score to 0.0 when no company information is retrieved from knowledge base
+  - Update LLM prompts to explicitly instruct against making up company capabilities
+  - Add fallback rationale explaining lack of company data when kb_retrieval_results is empty
+  - Implement validation in company match calculation to prevent positive assessments without supporting data
+  - _Requirements: 2.6, 2.7_
+
+- [ ]* 9. Add integration tests for end-to-end processing
   - Create integration tests with mock Bedrock responses
   - Test complete SQS message processing workflow
   - Validate output format matches required JSON structure

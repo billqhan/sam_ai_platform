@@ -29,6 +29,8 @@ The sam-sqs-generate-match-reports Lambda function currently outputs hardcoded "
 3. WHEN generating match scores THEN it SHALL return a float value between 0.0 and 1.0 based on actual analysis and store it in the "score" field
 4. WHEN generating rationale THEN it SHALL provide detailed reasoning explaining the match assessment, company strengths, and any capability gaps
 5. WHEN extracting opportunity data THEN it SHALL parse and include all SAM.gov fields: solicitationNumber, noticeId, title, fullParentPathName, postedDate, type, responseDeadLine, pointOfContact details, placeOfPerformance details, and generate the uiLink
+6. WHEN no knowledge base results are retrieved THEN the system SHALL assign a score of 0.0 and provide a rationale explaining that no company information was found to assess the match
+7. WHEN knowledge base retrieval fails or returns empty results THEN the system SHALL NOT generate positive match assessments or claim company capabilities that are not supported by actual data
 
 ### Requirement 3
 

@@ -5,8 +5,13 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError, BotoCoreError
 from typing import Optional
-from .logging_config import get_logger
-from .tracing import TracingContext
+try:
+    from .logging_config import get_logger
+    from .tracing import TracingContext
+except ImportError:
+    # Fallback for test environments
+    from logging_config import get_logger
+    from tracing import TracingContext
 
 logger = get_logger(__name__)
 

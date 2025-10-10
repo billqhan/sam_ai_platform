@@ -305,10 +305,11 @@ def process_sqs_record(record: Dict[str, Any],
             )
             
             start_time = time.time()
-            enhanced_description, opportunity_required_skills, llm_success = llm_client.extract_opportunity_info(
+            enhanced_description, opportunity_required_skills = llm_client.extract_opportunity_info(
                 description, attachment_content
             )
             processing_time = time.time() - start_time
+            llm_success = True  # If we get here without exception, it was successful
             
             # Log LLM response details
             error_handler.log_llm_response(

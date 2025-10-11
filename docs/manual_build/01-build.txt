@@ -456,4 +456,23 @@ and need to make sure all records get into final website report.
 
   i am noticing an inconsistancy with the web-reports (I think the most recent is part of deployment folder).  The report shows 7 records (which is correct), as seen from s3://ktest-sam-matching-out-runs-dev/runs/archive/ which was rolled up info the 2 files at the top level of s3://ktest-sam-matching-out-runs-dev/runs/. But the summary report s3://ktest-sam-website-dev/dashboards/Summary_20251011.html only printed 4 opportunities records for display  
 
-  About 483/500 credits remaining 
+please commit the need files to git, cleanup tmp files that were generated, and export session history to reports/other_issues as a markdown file
+
+  About 485/500 credits used 
+
+
+  ---- hopefully 1 last fix 
+
+  It looks like lambda/sam-json-processor is printing out too many "special characters" like '%28' and '%29' that are causing processing errors down the pipeline.  Please change this lambda function so there are no '%' values being printed out. it is better to just output a dask or underscore instead.  Here is an example from the logs :
+'''
+  Reading opportunity data from s3://ktest-sam-extracted-json-resources-dev/1PR2142%28RLP%29/1PR2142%28RLP%29_opportunity.json
+'''
+  
+  Also, when the function outputs the data, please put the data in a date folder (YYYY-MM-DD) instead of putting it at the top level of s3://ktest-sam-extracted-json-resources-dev/ (this should be an env variable). The data should be the original solicitation data. 
+  
+  It should look like s3://ktest-sam-extracted-json-resources-dev/YYYY-MM-DD/<solicitationid>
+  
+  PLease  only update the lambda/sam-json-processor code and nothing else. 
+
+
+  --- 488/500 credits used 

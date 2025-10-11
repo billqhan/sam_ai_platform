@@ -438,3 +438,22 @@ because no value is set. Please correct this.
 I see there are run results in  s3://ktest-sam-matching-out-runs-dev/runs/, 
 but no website have been generated in ktest-sam-website-dev 
 Can you please check the existing code to see why this is not happening and fix the problem
+--- seemed to fix bot errors... 
+
+--- new final 472/500 
+
+sqs dlq still looks strange
+and need to make sure all records get into final website report. 
+
+
+
+
+ when running ktest-sam-sqs-generate-match-reports-dev, i am seeing the following errors :
+
+  "message": "AWS ClientError in query_knowledge_base: ValidationException - 2 validation errors detected: Value 'placeholder-kb-id' at 'knowledgeBaseId' failed to satisfy constraint: Member must have length less than or equal to 10; Value 'placeholder-kb-id' at 'knowledgeBaseId' failed to satisfy constraint: Member must satisfy regular expression pattern: [0-9a-zA-Z]+",
+
+  --- 481/500 credits 
+
+  i am noticing an inconsistancy with the web-reports (I think the most recent is part of deployment folder).  The report shows 7 records (which is correct), as seen from s3://ktest-sam-matching-out-runs-dev/runs/archive/ which was rolled up info the 2 files at the top level of s3://ktest-sam-matching-out-runs-dev/runs/. But the summary report s3://ktest-sam-website-dev/dashboards/Summary_20251011.html only printed 4 opportunities records for display  
+
+  About 483/500 credits remaining 

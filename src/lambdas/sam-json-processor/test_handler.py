@@ -198,6 +198,20 @@ class TestJSONParsingAndOpportunityExtraction:
         opp = {'opportunity_number': '  OPP-001  '}
         assert processor._get_opportunity_number(opp) == 'OPP-001'
     
+    def test_get_opportunity_number_url_decoding(self, processor):
+        """Test opportunity number extraction handles URL encoding."""
+        # Test URL encoded parentheses
+        opp1 = {'opportunity_number': '1PR2142%28RLP%29'}
+        assert processor._get_opportunity_number(opp1) == '1PR2142_RLP_'
+        
+        # Test other special characters
+        opp2 = {'opportunity_number': 'TEST%20SPACE%26AMPERSAND'}
+        assert processor._get_opportunity_number(opp2) == 'TEST_SPACE_AMPERSAND'
+        
+        # Test mixed case
+        opp3 = {'opportunity_number': 'SOL%2D123%2ETEST'}
+        assert processor._get_opportunity_number(opp3) == 'SOL-123.TEST'
+    
     def test_process_sam_json_file_success(self, processor, sample_sam_data):
         """Test successful processing of SAM JSON file."""
         # Mock S3 get_object response
@@ -463,13 +477,13 @@ class TestErrorHandling:
             'title': 'Test Opportunity'
         }
         
-        processor._store_opportunity_json(opportunity, 'OPP-001/opportunity.json')
+        processor._store_opportunity_json(opportunity, '2024-01-15/OPP-001/OPP-001_opportunity.json')
         
         processor.s3_client.put_object.assert_called_once()
         call_args = processor.s3_client.put_object.call_args
         
         assert call_args[1]['Bucket'] == 'test-output-bucket'
-        assert call_args[1]['Key'] == 'OPP-001/opportunity.json'
+        assert call_args[1]['Key'] == '2024-01-15/OPP-001/OPP-001_opportunity.json'
         assert call_args[1]['ContentType'] == 'application/json'
         
         # Verify JSON content

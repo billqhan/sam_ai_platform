@@ -7,10 +7,12 @@ import json
 import os
 import asyncio
 import aiohttp
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 from typing import List, Dict, Any, Optional
 import tempfile
+import re
 
 from shared.logging_config import get_logger
 from shared.error_handling import handle_lambda_error, RetryableError, NonRetryableError, ErrorType
@@ -138,9 +140,12 @@ class OpportunityProcessor:
         
         logger.info("Processing opportunity", opportunity_number=opportunity_number)
         
-        # Create the opportunity folder structure
-        opportunity_folder = f"{opportunity_number}/"
-        opportunity_file_key = f"{opportunity_folder}opportunity.json"
+        # Create date-based folder structure (YYYY-MM-DD)
+        current_date = datetime.now().strftime('%Y-%m-%d')
+        
+        # Create the opportunity folder structure with date prefix
+        opportunity_folder = f"{current_date}/{opportunity_number}/"
+        opportunity_file_key = f"{opportunity_folder}{opportunity_number}_opportunity.json"
         
         # Store the opportunity JSON
         self._store_opportunity_json(opportunity, opportunity_file_key)
@@ -159,7 +164,12 @@ class OpportunityProcessor:
         # Try different possible field names for opportunity identifier
         for field in ['opportunity_number', 'solicitation_number', 'opportunity_id', 'solicitationNumber']:
             if field in opportunity and opportunity[field]:
-                return str(opportunity[field]).strip()
+                raw_number = str(opportunity[field]).strip()
+                # URL decode to remove %28, %29 and other encoded characters
+                decoded_number = unquote(raw_number)
+                # Replace any remaining problematic characters with underscores
+                clean_number = re.sub(r'[^\w\-.]', '_', decoded_number)
+                return clean_number
         
         return None
     

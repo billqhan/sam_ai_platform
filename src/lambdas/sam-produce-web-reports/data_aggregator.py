@@ -264,21 +264,21 @@ class DataAggregator:
         
         for r in records:
             s = r.get("match_score", 0.0)
-            if s == 1.0: 
+            if s >= 0.95: 
                 groups["1.0 (Perfect match)"].append(r)
-            elif s == 0.9: 
+            elif s >= 0.85: 
                 groups["0.9 (Outstanding match)"].append(r)
-            elif s == 0.8: 
+            elif s >= 0.75: 
                 groups["0.8 (Strong match)"].append(r)
-            elif s == 0.7: 
+            elif s >= 0.65: 
                 groups["0.7 (Good subject matter match)"].append(r)
-            elif s == 0.6: 
+            elif s >= 0.55: 
                 groups["0.6 (Decent subject matter match)"].append(r)
-            elif s == 0.5: 
+            elif s >= 0.4: 
                 groups["0.5 (Partial technical or conceptual match)"].append(r)
-            elif s == 0.3: 
+            elif s >= 0.15: 
                 groups["0.3 (Weak or minimal match)"].append(r)
-            elif s == 0.0: 
+            else: 
                 groups["0.0 (No demonstrated capability)"].append(r)
         
         return groups

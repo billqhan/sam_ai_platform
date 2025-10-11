@@ -14,8 +14,8 @@ Write-Host "Bucket Prefix: $BucketPrefix" -ForegroundColor Yellow
 
 # Set variables
 $LambdaName = "$BucketPrefix-sam-produce-web-reports-$Environment"
-$SourceDir = "src/lambdas/sam-produce-web-reports"
-$SharedDir = "src/shared"
+$SourceDir = "../src/lambdas/sam-produce-web-reports"
+$SharedDir = "../src/shared"
 $TempDir = "temp/lambda_package_web_reports"
 $ZipFile = "temp/sam-produce-web-reports-function.zip"
 

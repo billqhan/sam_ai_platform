@@ -410,13 +410,13 @@ Resources:
           def lambda_handler(event, context):
               return {'statusCode': 200, 'body': 'Function placeholder'}
       MemorySize: 2048
-      Timeout: 30  # 30 seconds - must be less than SQS visibility timeout
+      Timeout: 300  # 5 minutes - increased for LLM processing
       TracingConfig:
         Mode: Active
       Environment:
         Variables:
           BEDROCK_REGION: 'us-east-1'
-          KNOWLEDGE_BASE_ID: 'placeholder-kb-id'
+          KNOWLEDGE_BASE_ID: 'BGPVYMKB44'
           MATCH_THRESHOLD: '0.7'
           OUTPUT_BUCKET_SQS: !If 
             - HasBucketPrefix

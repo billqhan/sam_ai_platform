@@ -86,21 +86,34 @@ class LLMDataExtractor:
             raise
     
     @handle_aws_error
-    def read_attachment_files(self, bucket: str, opportunity_id: str) -> List[str]:
+    def read_attachment_files(self, bucket: str, opportunity_id: str, source_key: str = None) -> List[str]:
         """
         Read attachment files for an opportunity from S3.
         Limits the number of files processed based on MAX_ATTACHMENT_FILES.
+        Handles both old format (opportunity_id/) and new date-based format (YYYY-MM-DD/opportunity_id/).
         
         Args:
             bucket: S3 bucket name
             opportunity_id: The opportunity ID to find attachments for
+            source_key: Optional source key to determine the folder structure
             
         Returns:
             List of attachment content strings (limited by max_attachment_files)
         """
         try:
-            # List objects with the opportunity ID prefix to find attachments
-            prefix = f"{opportunity_id}/"
+            # Determine the correct prefix based on the source key structure
+            if source_key and '/' in source_key:
+                path_parts = source_key.split('/')
+                if len(path_parts) >= 2 and len(path_parts[0]) == 10 and path_parts[0].count('-') == 2:
+                    # New date-based format: YYYY-MM-DD/opportunity_id/
+                    prefix = f"{path_parts[0]}/{opportunity_id}/"
+                else:
+                    # Old format: opportunity_id/
+                    prefix = f"{opportunity_id}/"
+            else:
+                # Fallback to old format
+                prefix = f"{opportunity_id}/"
+            
             logger.info(f"Looking for attachments with prefix: {prefix}")
             
             response = self.s3_client.list_objects_v2(
@@ -242,6 +255,7 @@ class LLMDataExtractor:
     def extract_opportunity_id(self, s3_key: str) -> str:
         """
         Extract opportunity ID from S3 key path.
+        Handles both old format (opportunity_id/file.json) and new date-based format (YYYY-MM-DD/opportunity_id/file.json).
         
         Args:
             s3_key: The S3 object key
@@ -249,12 +263,19 @@ class LLMDataExtractor:
         Returns:
             The extracted opportunity ID
         """
-        # Assume format like "opportunity_id/opportunity.json" or similar
         if '/' in s3_key:
-            opportunity_id = s3_key.split('/')[0]
+            path_parts = s3_key.split('/')
+            
+            # Check if first part looks like a date (YYYY-MM-DD format)
+            if len(path_parts) >= 2 and len(path_parts[0]) == 10 and path_parts[0].count('-') == 2:
+                # New date-based format: YYYY-MM-DD/opportunity_id/file.json
+                opportunity_id = path_parts[1]
+            else:
+                # Old format: opportunity_id/file.json
+                opportunity_id = path_parts[0]
         else:
             # Fallback: use filename without extension
-            opportunity_id = s3_key.replace('.json', '').replace('opportunity', '')
+            opportunity_id = s3_key.replace('.json', '').replace('_opportunity', '')
         
         logger.debug(f"Extracted opportunity ID '{opportunity_id}' from key '{s3_key}'")
         return opportunity_id

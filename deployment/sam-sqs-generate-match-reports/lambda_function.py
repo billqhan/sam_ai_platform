@@ -241,7 +241,7 @@ def process_sqs_record(record: Dict[str, Any],
         logger.info("🔍 Step 2: Reading attachment files")
         
         try:
-            attachments = data_extractor.read_attachment_files(source_bucket, opportunity_id)
+            attachments = data_extractor.read_attachment_files(source_bucket, opportunity_id, source_key)
             logger.info(f"Found {len(attachments)} attachment files")
             
             # Log progress update for attachment processing

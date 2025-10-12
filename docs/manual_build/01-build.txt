@@ -476,3 +476,21 @@ please commit the need files to git, cleanup tmp files that were generated, and 
 
 
   --- 488/500 credits used 
+
+
+As a result of the last fix You will need to update the deployment/sam-sqs-generate-match-reports
+
+The change to lambda/sam-json-processor which moved data from s3://ktest-sam-extracted-json-resources-dev/ to s3://ktest-sam-extracted-json-resources-dev/YYYY-MM-DD/ is causing errors in the data going to s3://ktest-sam-extracted-json-resources-dev/
+
+Data is being read from 
+  s3://ktest-sam-extracted-json-resources-dev/2025-10-11/DARPARA2502/DARPARA2502_opportunity.json
+
+
+but the results of the lambda are going to 
+ s3://ktest-sam-matching-out-sqs-dev/2025-10-11/matches/2025-10-11.json
+
+indead of 
+
+ s3://ktest-sam-matching-out-sqs-dev/2025-10-11/matches/DARPARA2502.json
+
+Please fix the deployment version of the code, and help me deploy it

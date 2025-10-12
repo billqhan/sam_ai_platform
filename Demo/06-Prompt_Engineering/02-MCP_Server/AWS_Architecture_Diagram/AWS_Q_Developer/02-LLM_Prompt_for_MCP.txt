@@ -1,0 +1,76 @@
+I would like to use the AWS Diagram MCP Server. 
+Please assist in Generating Python code using the diagrams package to document the following data processing pipeline
+I am describing the steps in the processing 
+
+Title: "AI Powered RFP Response Agent"
+
+1 - Data Retrieval 
+* External API (SAM.GOV data)
+* AWS Lambda Function ("sam-gov-daily-download")
+* Cron Job calls lambda functions 1x every day
+* Result: "SAM Opportunities.json" (JSON contains multiple opportunity records)
+
+2 - Raw Data Storage
+* Data is written to s3 bucket "sam-data-in" 
+* Logs are written to "sam-download-files-logs"
+
+3 - SAM Opportunity Splitter Processor
+* Trigger for Lambda Function "sam-json-processor" is on s3 bucket "sam-data-in".
+* Function splits "SAM Opportunities.json" into multiple files, 1 file per opportunity. (the "opportunity_number prefix" is the title of the json file.)
+* Resulting files go into s3 bucket "sam-extracted-json-resources" 
+* In each JSON file, there is a "resouce link" list of 0 or many files. The are also downloaded, and the "opportunity_number prefix" is added to all the files. 
+
+4 - SQS "sqs-sam-json-messages" 
+* Trigger is on the bucket "sam-extracted-json-resources".
+* All new .json files are added to the SQS queue "sqs-sam-json-messages"
+
+5 -  Process and Generate Match Reports
+* Lambda function "sam-sqs-geneate-match-reports" read the SQS "sqs-sam-json-messages" when new message are added
+* Batch size = 1, Maximum Concurrenty between values of 1 and N
+* All results are writtend to S3 bucket "sam-matching-out-sqs"
+* Makes calls to BOTH Bedrock Agents: "Get Opportunity Description" and "Calculate Opportunity to Company Match"
+
+6 - Create a box called "BEDROCK AI MATCH PROCESSING"
+* (Please include put these 6A and 6B and 6C in the box )
+
+6A - Call to Bedrock Agent - "Get Opportunity Info"
+* CALLED BY SQS "sqs-sam-json-messages" 
+* LLM Agent reads the Opportunity JSON and assosciated downloaded files, and extacts out "key information" from the SAM opportunity 
+* Data is passed FROM "Get Opportunity Info" TO "Calculate Company Match"
+
+6B - Call to Bedrock Agent - "Calculate Company Match"
+* CALLED BY SQS "sqs-sam-json-messages" 
+* Generates "match score"
+    - Uses "key information" from the SAM opportunity
+    - Looks for matching data in "Company Information"
+    - Uses LLM Prompt to determine match score
+* Results are written to S3 bucket "sam-matching-out-sqs"
+    - Opportunities Above match score threshold are sent to "matched" folder
+    - Opportunities Below match score threshold are sent to "not_matched" folder
+    - Individual Summaries are written to "runs" folder 
+
+6C - Connected to DATABASE "Company Information KB" 
+* 2 WAY CONNECTION WITH Bedrock Agent - "Calculate Company Match" (
+    - Arrow from "Company Information KB" to  "Calculate Company Match"
+    - Arrow from "Calculate Company Match"  to  "Company Information KB"
+* This is the RAG which contains skills about the company
+
+(
+Please put step 7 in a BOX "Run Results".
+This BOX is BELOW the s3 bucket  "sam-matching-out-sqs".
+"sam-lambda-every-5min-summarizer" and "sam-merge-and-archive-result-logs" should be in the box
+ )
+
+7 - Aggregate Daily Run Results (FINAL STEP)
+* EventBridge event "sam-lambda-every-5min-summarizer" runs every 5 minutes
+* "sam-lambda-every-5min-summarizer" calls Lambda Function "sam-merge-and-archive-result-logs"
+
+    - Lambda Function "sam-merge-and-archive-result-logs" READS and WRITES TO  S3 bucket "sam-matching-out-sqs".
+    - 
+    - Lambda Function "sam-merge-and-archive-result-logs" READS all of the run results in the  S3 bucket "sam-matching-out-sqs" "runs" folder (result files that were generated in the last 5 minutes)
+
+    - Lambda Function "sam-merge-and-archive-result-logs" GENERATES Summary of the run results and WRITES in the  S3 bucket "sam-matching-out-sqs"  to a new "results" file (prefixed with the data and timestamp)
+
+    - Individual (non summary) files are written to are sent to S3 bucket "sam-matching-out-sqs" "archive" folder 
+
+** Please ensure the diagram flow is from TOP to BOTTOM ** 

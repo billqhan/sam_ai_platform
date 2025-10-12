@@ -1,0 +1,16 @@
+Use Gitlab or Bitbucket, or Preview in VSStudio
+
+
+Test1\
+
+README.md
+
+Test1\.kiro\specs\ai-rfp-response-agent
+
+README.md
+
+requirements.md
+
+design.md
+
+tasks.md

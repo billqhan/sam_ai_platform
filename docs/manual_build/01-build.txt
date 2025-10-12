@@ -494,3 +494,5 @@ indead of
  s3://ktest-sam-matching-out-sqs-dev/2025-10-11/matches/DARPARA2502.json
 
 Please fix the deployment version of the code, and help me deploy it
+
+496 / 500 credits - complete! 

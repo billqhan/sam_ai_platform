@@ -1,16 +1,16 @@
-Use Gitlab or Bitbucket, or Preview in VSStudio
+Use Gitlab or Bitbucket, or Preview Code in VSStudio
 
 
 Test1\
 
-README.md
+README.md                                   https://bitbucket.roc-devops.corp.exelisinc.com/users/marringt/repos/rfi_response_kiro/browse/README.md
 
-Test1\.kiro\specs\ai-rfp-response-agent
+Test1\.kiro\specs\ai-rfp-response-agent     https://bitbucket.roc-devops.corp.exelisinc.com/users/marringt/repos/rfi_response_kiro/browse/.kiro/specs/ai-rfp-response-agent 
 
-README.md
+README.md                                   https://bitbucket.roc-devops.corp.exelisinc.com/users/marringt/repos/rfi_response_kiro/browse/.kiro/specs/ai-rfp-response-agent/README.md
 
-requirements.md
+requirements.md                             https://bitbucket.roc-devops.corp.exelisinc.com/users/marringt/repos/rfi_response_kiro/browse/.kiro/specs/ai-rfp-response-agent/requirements.md
 
-design.md
+design.md                                   https://bitbucket.roc-devops.corp.exelisinc.com/users/marringt/repos/rfi_response_kiro/browse/.kiro/specs/ai-rfp-response-agent/design.md 
 
-tasks.md
+tasks.md                                    https://bitbucket.roc-devops.corp.exelisinc.com/users/marringt/repos/rfi_response_kiro/browse/.kiro/specs/ai-rfp-response-agent/tasks.md

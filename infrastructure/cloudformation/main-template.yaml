@@ -191,7 +191,7 @@ Resources:
         - HasBucketPrefix
         - !Sub '${BucketPrefix}-sqs-sam-json-messages-${Environment}'
         - !Sub 'sqs-sam-json-messages-${Environment}'
-      VisibilityTimeoutSeconds: 300  # 5 minutes
+      VisibilityTimeoutSeconds: 1800  # 30 minutes - 6x Lambda timeout
       MessageRetentionPeriod: 1209600  # 14 days
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt SqsSamJsonMessagesDeadLetterQueue.Arn

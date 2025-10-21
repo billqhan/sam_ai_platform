@@ -115,6 +115,9 @@ def lambda_handler(event, context):
                     }
                 
                 results.append(error_result)
+                
+                # Log critical error details for monitoring
+                logger.error(f"🚨 CRITICAL: Message {record.get('messageId', f'unknown_{i}')} processing failed with {error_category} error: {record_error}")
         
         # Summary
         successful = len([r for r in results if r.get('success', False)])
@@ -125,10 +128,31 @@ def lambda_handler(event, context):
         logger.info(f"  Successful: {successful}")
         logger.info(f"  Failed: {failed}")
         
+        # Handle partial batch failures using SQS batch item failure reporting
+        if failed > 0:
+            failed_results = [r for r in results if not r.get('success', False)]
+            error_summary = f"Failed to process {failed} out of {len(results)} messages"
+            logger.error(f"❌ {error_summary}")
+            
+            # Create batch item failures response for SQS
+            batch_item_failures = []
+            for i, record in enumerate(records):
+                result = results[i] if i < len(results) else {'success': False}
+                if not result.get('success', False):
+                    batch_item_failures.append({
+                        'itemIdentifier': record.get('messageId', f'unknown_{i}')
+                    })
+                    logger.error(f"Failed message: {record.get('messageId', f'unknown_{i}')} - {result.get('error', 'unknown error')}")
+            
+            # Return partial batch failure response
+            return {
+                'batchItemFailures': batch_item_failures
+            }
+        
         return {
             'statusCode': 200,
             'body': json.dumps({
-                'message': 'LLM match report processing completed',
+                'message': 'LLM match report processing completed successfully',
                 'total_messages': len(results),
                 'successful_messages': successful,
                 'failed_messages': failed,

@@ -30,6 +30,10 @@ Parameters:
     Type: String
     Default: ''
     Description: 'Optional prefix for S3 bucket names to avoid conflicts'
+  
+  KnowledgeBaseId:
+    Type: String
+    Description: 'ID of the Bedrock Knowledge Base for company information'
 
 Conditions:
   HasBucketPrefix: !Not [!Equals [!Ref BucketPrefix, '']]
@@ -416,7 +420,7 @@ Resources:
       Environment:
         Variables:
           BEDROCK_REGION: 'us-east-1'
-          KNOWLEDGE_BASE_ID: 'BGPVYMKB44'
+          KNOWLEDGE_BASE_ID: !Ref KnowledgeBaseId
           MATCH_THRESHOLD: '0.7'
           OUTPUT_BUCKET_SQS: !If 
             - HasBucketPrefix
@@ -529,6 +533,8 @@ Resources:
       FunctionName: !Ref SamSqsGenerateMatchReportsFunction
       BatchSize: 1
       MaximumBatchingWindowInSeconds: 0
+      FunctionResponseTypes:
+        - ReportBatchItemFailures
 
 Outputs:
   SamGovDailyDownloadFunctionArn:

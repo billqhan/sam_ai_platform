@@ -1,1 +1,2 @@
-# No external dependencies - using built-in libraries only
+# python-docx dependencies cause issues in Lambda environment
+# Using RTF format for Word compatibility instead

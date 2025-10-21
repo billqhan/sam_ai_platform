@@ -18,6 +18,7 @@ except ImportError:
     logging.warning("python-docx not available, Word document generation will be disabled")
 
 from template_manager import TemplateManager
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +181,81 @@ class ReportGenerator:
         logger.info("Word document generated successfully")
         
         return doc_bytes.getvalue()
+    
+    def generate_docx(self, response_content: str, metadata: Dict[str, Any]) -> Document:
+        """
+        Generate a DOCX file with proper formatting and page breaks from Bedrock Agent response.
+        
+        Args:
+            response_content: Generated response content from Bedrock Agent
+            metadata: Metadata dictionary with timestamp, source_file, etc.
+            
+        Returns:
+            Document: Generated DOCX document
+        """
+        if not self.docx_available:
+            logger.warning("python-docx not available, cannot generate DOCX document")
+            raise RuntimeError("python-docx library not available")
+        
+        doc = Document()
+        ts = metadata["timestamp"]
+        
+        # Title Page
+        doc.add_heading('Response Template', level=1)
+        doc.add_paragraph(f"Generated: {ts}")
+        doc.add_paragraph(f"Source File: {metadata['source_file']}")
+        doc.add_paragraph(f"Solicitation: {metadata['solicitation']}")
+        doc.add_paragraph(f"Match Score: {metadata['match_score']}")
+        doc.add_paragraph(f"Agent: {metadata['agent']}")
+        doc.add_paragraph("---")
+        
+        # Response content, line by line
+        for line in response_content.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Insert page breaks before each section
+            if line.lower().startswith("**section 1:"):
+                doc.add_page_break()  # Page break before Section 1
+                doc.add_heading("Section 1: Human-Readable Summary (For Sender)", level=2)
+                continue
+            elif line.lower().startswith("**section 2:"):
+                doc.add_page_break()
+                doc.add_heading("Section 2: Draft Response Template (Formal Email to Government)", level=2)
+                continue
+            
+            # Convert markdown bold (**text**) into real bold runs
+            self._add_markdown_paragraph(doc, line)
+        
+        return doc
+    
+    def _add_markdown_paragraph(self, doc: Document, line: str) -> None:
+        """
+        Convert Markdown bold (**text**) into actual bold text and add line to Word doc as a paragraph.
+        
+        Args:
+            doc: Document object
+            line: Line of text with potential markdown formatting
+        """
+        para = doc.add_paragraph()
+        bold_pattern = r"\*\*(.*?)\*\*"
+        last_end = 0
+        
+        for match in re.finditer(bold_pattern, line):
+            # Normal text before bold
+            if match.start() > last_end:
+                para.add_run(line[last_end:match.start()])
+            
+            # Bold text
+            bold_text = match.group(1)
+            bold_run = para.add_run(bold_text)
+            bold_run.bold = True
+            last_end = match.end()
+        
+        # Remaining text after last bold
+        if last_end < len(line):
+            para.add_run(line[last_end:])
     
     def generate_email_template(self, match_data: Dict[str, Any]) -> str:
         """

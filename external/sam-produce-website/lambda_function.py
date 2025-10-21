@@ -239,15 +239,13 @@ def render_dashboard(date_prefix, stats, grouped):
         "0.0 (No demonstrated capability)"
     ]
 
-    first_group = True
     for idx, bucket in enumerate(confidence_order):
         opps = grouped.get(bucket, [])
         if not opps:
             continue
         
         collapse_id = f"collapse-{idx}"
-        collapse_class = "collapse show" if first_group else "collapse"
-        first_group = False
+        collapse_class = "collapse"
         
         html += f"""
   <div class="card mb-3">
@@ -282,8 +280,7 @@ def render_dashboard(date_prefix, stats, grouped):
             poc_name = escape_html(r.get('pointOfContact.fullName', 'Not specified'))
             poc_email = escape_html(r.get('pointOfContact.email', ''))
 
-            match_badge = ('<span class="badge bg-success">Matched</span>' 
-                          if matched else '<span class="badge bg-danger">Not Matched</span>')
+            match_badge = '<span class="badge bg-success">Matched</span>' if matched else ''
 
             skills_req_html = "".join(f"<li>{escape_html(s)}</li>" for s in skills_req[:8])
             if len(skills_req) > 8:

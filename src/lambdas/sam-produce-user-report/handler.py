@@ -187,76 +187,188 @@ class UserReportHandler:
             logger.error(f"Error calling Bedrock Agent {agent_id}: {str(e)}")
             raise RetryableError(f"Bedrock Agent call failed: {str(e)}")
     
-    def _generate_response_template(self, json_data: Dict[str, Any]) -> str:
-        """
-        Use Amazon Bedrock Agent to generate the response template.
+    def _get_nested_value(self, data, path, default='Unknown'):
+        """Safely extract nested values from JSON using dot notation"""
+        try:
+            keys = path.split('.')
+            value = data
+            for key in keys:
+                if isinstance(value, dict) and key in value:
+                    value = value[key]
+                else:
+                    return default
+            return value if value is not None else default
+        except:
+            return default
+    
+    def _clean_enhanced_description(self, description):
+        """Clean enhanced description by removing unwanted headers and formatting"""
+        if not description:
+            return description
         
-        Args:
-            json_data: Match result JSON data
-            
-        Returns:
-            str: Generated response template
-        """
-        # Construct the prompt for Bedrock Agent
-        prompt_text = f'''You are a government contracting response assistant. Create exactly two sections based on this JSON data. You MUST fill in all the bullet points with actual data from the JSON.
-
-JSON DATA:
-{json.dumps(json_data, indent=2)}
-
-Output exactly this format with ALL data filled in:
-
-**Section 1: Human-Readable Summary (For Sender)**
+        # Remove BUSINESS SUMMARY headers and related formatting
+        cleaned = description.replace('**BUSINESS SUMMARY:**', '')
+        cleaned = cleaned.replace('BUSINESS SUMMARY:', '')
+        
+        # Remove other unwanted headers that might appear
+        cleaned = cleaned.replace('**Purpose of the Solicitation:**', '')
+        cleaned = cleaned.replace('Purpose of the Solicitation:', '')
+        
+        # Clean up extra whitespace and newlines
+        cleaned = ' '.join(cleaned.split())
+        
+        return cleaned.strip()
+    
+    def _generate_section1_programmatically(self, json_data: Dict[str, Any]) -> str:
+        """Generate Section 1 programmatically using actual JSON data"""
+        
+        # Extract data with proper handling of nested fields
+        solicitation_number = json_data.get('solicitationNumber', 'Unknown')
+        title = json_data.get('title', 'Unknown Title')
+        agency = json_data.get('fullParentPathName', 'Unknown Agency')
+        posted_date = json_data.get('postedDate', 'Unknown')
+        response_deadline = json_data.get('responseDeadLine', 'Unknown')
+        notice_type = json_data.get('type', 'Unknown')
+        notice_id = json_data.get('noticeId', 'Unknown')
+        ui_link = json_data.get('uiLink', 'Not available')
+        
+        # Handle nested point of contact fields
+        poc_name = self._get_nested_value(json_data, 'pointOfContact.fullName', 'Unknown')
+        poc_email = self._get_nested_value(json_data, 'pointOfContact.email', 'Unknown')
+        poc_phone = self._get_nested_value(json_data, 'pointOfContact.phone', 'Not provided')
+        
+        # Handle nested place of performance fields
+        city = self._get_nested_value(json_data, 'placeOfPerformance.city.name', 'Unknown')
+        state = self._get_nested_value(json_data, 'placeOfPerformance.state.name', 'Unknown')
+        country = self._get_nested_value(json_data, 'placeOfPerformance.country.name', 'Unknown')
+        
+        # Match assessment data
+        score = json_data.get('score', 0)
+        score_percentage = score * 100 if score else 0
+        match_status = "Matched" if score >= 0.5 else "Not Matched"
+        rationale = json_data.get('rationale', 'No rationale provided')
+        
+        # Company data arrays
+        company_skills = json_data.get('company_skills', [])
+        required_skills = json_data.get('opportunity_required_skills', [])
+        past_performance = json_data.get('past_performance', [])
+        kb_results_count = len(json_data.get('kb_retrieval_results', []))
+        
+        # Processing metadata
+        input_key = json_data.get('input_key', 'Unknown')
+        timestamp = json_data.get('timestamp', 'Unknown')
+        enhanced_desc = json_data.get('enhanced_description', '')
+        enhanced_desc_length = len(enhanced_desc)
+        citations_count = len(json_data.get('citations', []))
+        
+        # Build Section 1 programmatically with proper spacing
+        section1 = f"""**Section 1: Human-Readable Summary (For Sender)**
 
 **Opportunity Overview**
-- Solicitation Number: {json_data.get('solicitationNumber', 'Unknown')}
-- Title: {json_data.get('title', 'Unknown Title')}
-- Agency: {json_data.get('fullParentPathName', 'Unknown Agency')}
-- Posted Date: {json_data.get('postedDate', 'Unknown')}
-- Response Deadline: {json_data.get('responseDeadLine', 'Unknown')}
-- Notice Type: {json_data.get('type', 'Unknown')}
-- Notice ID: {json_data.get('noticeId', 'Unknown')}
-- SAM.gov Link: {json_data.get('uiLink', 'Not available')}
+- Solicitation Number: {solicitation_number}
+- Title: {title}
+- Agency: {agency}
+- Posted Date: {posted_date}
+- Response Deadline: {response_deadline}
+- Notice Type: {notice_type}
+- Notice ID: {notice_id}
+- SAM.gov Link: {ui_link}
 
 **What the Government Is Seeking**
 
-{json_data.get('enhanced_description', 'No description available')[:500]}...
+{self._clean_enhanced_description(enhanced_desc)[:800] + '...' if len(enhanced_desc) > 800 else self._clean_enhanced_description(enhanced_desc)}
 
 **Place of Performance & Point of Contact**
-- Location: {json_data.get('placeOfPerformance.city.name', 'Unknown')}, {json_data.get('placeOfPerformance.state.name', 'Unknown')}, {json_data.get('placeOfPerformance.country.name', 'Unknown')}
-- Point of Contact: {json_data.get('pointOfContact.fullName', 'Unknown')}
-- Email: {json_data.get('pointOfContact.email', 'Unknown')}
-- Phone: {json_data.get('pointOfContact.phone', 'Not provided')}
+- Location: {city}, {state}, {country}
+- Point of Contact: {poc_name}
+- Email: {poc_email}
+- Phone: {poc_phone}
 
 **Match Assessment**
-- Match Score: {json_data.get('score', 'N/A')} ({(json_data.get('score', 0) * 100):.1f}%)
-- Match Status: {"Matched" if json_data.get('score', 0) >= 0.5 else "Not Matched"}
-- Match Rationale: {json_data.get('rationale', 'No rationale provided')}
+- Match Score: {score} ({score_percentage:.1f}%)
+- Match Status: {match_status}
+- Match Rationale: {rationale}
 
 **Company Data Used in the Match**
-- Company Skills: {', '.join(json_data.get('company_skills', []))}
-- Opportunity Required Skills: {', '.join(json_data.get('opportunity_required_skills', []))}
-- Past Performance: {', '.join(json_data.get('past_performance', []))}
-- Knowledge Base Results: {len(json_data.get('kb_retrieval_results', []))} relevant documents found
+- Company Skills: {', '.join(company_skills) if company_skills else 'None specified'}
+- Opportunity Required Skills: {', '.join(required_skills) if required_skills else 'None specified'}
+- Past Performance: {', '.join(past_performance) if past_performance else 'None specified'}
+- Knowledge Base Results: {kb_results_count} relevant documents found
 
 **Processing Information**
-- Input File: {json_data.get('input_key', 'Unknown')}
-- Processing Timestamp: {json_data.get('timestamp', 'Unknown')}
-- Enhanced Description Length: {len(json_data.get('enhanced_description', ''))} characters
-- Citations Count: {len(json_data.get('citations', []))}
+- Input File: {input_key}
+- Processing Timestamp: {timestamp}
+- Enhanced Description Length: {enhanced_desc_length} characters
+- Citations Count: {citations_count}"""
+        
+        return section1
 
-**Additional Company Documents**
-- Company Capabilities Overview: [Link to PDF document]
-- Past Performance Summary: [Link to PDF document]
-- Technical Qualifications: [Link to PDF document]
-
----
-
-**Section 2: Draft Response Template (Formal Email to Government)**
+    def _generate_section2_programmatically(self, json_data: Dict[str, Any]) -> str:
+        """Generate Section 2 programmatically using actual JSON data"""
+        
+        # Extract data for email template
+        solicitation_number = json_data.get('solicitationNumber', 'UNKNOWN')
+        title = json_data.get('title', 'Unknown Title')
+        agency = json_data.get('fullParentPathName', 'Government Agency')
+        poc_name = self._get_nested_value(json_data, 'pointOfContact.fullName', 'Contracting Officer')
+        poc_email = self._get_nested_value(json_data, 'pointOfContact.email', 'contracting.officer@agency.gov')
+        
+        # Company skills and capabilities for content
+        company_skills = json_data.get('company_skills', [])
+        past_performance = json_data.get('past_performance', [])
+        enhanced_desc = json_data.get('enhanced_description', '')
+        rationale = json_data.get('rationale', 'We believe our qualifications and experience make us well-suited for this opportunity.')
+        
+        # Generate capability statement from company skills with proper grammar
+        if company_skills:
+            if len(company_skills) >= 3:
+                capability_text = f"Our company possesses expertise in {company_skills[0]}, {company_skills[1]}, and {company_skills[2]}."
+                if len(company_skills) > 3:
+                    additional_skills = company_skills[3:6]
+                    capability_text += f" Additionally, we have demonstrated experience with {', '.join(additional_skills)}."
+            else:
+                capability_text = f"Our company possesses expertise in {', '.join(company_skills)}."
+        else:
+            capability_text = "Our company possesses the technical expertise and experience required for this opportunity."
+        
+        # Generate past performance statement with proper grammar and capitalization
+        if past_performance:
+            if len(past_performance) == 1:
+                # Ensure first letter is capitalized
+                perf_item = past_performance[0].strip()
+                if perf_item and not perf_item[0].isupper():
+                    perf_item = perf_item[0].upper() + perf_item[1:]
+                performance_text = f"Our track record includes the following achievement: {perf_item}."
+            elif len(past_performance) >= 2:
+                # Ensure both items are properly capitalized
+                perf_item1 = past_performance[0].strip()
+                perf_item2 = past_performance[1].strip()
+                if perf_item1 and not perf_item1[0].isupper():
+                    perf_item1 = perf_item1[0].upper() + perf_item1[1:]
+                if perf_item2 and not perf_item2[0].isupper():
+                    perf_item2 = perf_item2[0].upper() + perf_item2[1:]
+                performance_text = f"Our track record includes multiple achievements, including: {perf_item1}. We have also successfully completed: {perf_item2}."
+            else:
+                performance_text = f"Our past performance demonstrates success in {', '.join(past_performance[:3])}."
+        else:
+            performance_text = "We are establishing our performance record and are committed to delivering quality results on time and within budget."
+        
+        # Create a cleaner technical approach summary with proper capitalization
+        if enhanced_desc:
+            # Clean the description first, then extract first sentence
+            cleaned_desc = self._clean_enhanced_description(enhanced_desc)
+            first_sentence = cleaned_desc.split('.')[0] if '.' in cleaned_desc else cleaned_desc[:150]
+            requirements_summary = first_sentence.strip()
+            # Don't force lowercase - keep original capitalization for proper nouns like DARPA
+        else:
+            requirements_summary = "the requirements outlined in this solicitation"
+        
+        section2 = f"""**Section 2: Draft Response Template (Formal Email to Government)**
 
 **TO:**
-[Extract POC name from JSON]
-[Extract agency from JSON]
-Email: [Extract email from JSON]
+{poc_name}
+{agency}
+Email: {poc_email}
 
 **FROM:**
 [Your Name]
@@ -268,26 +380,31 @@ Email: [Extract email from JSON]
 
 **DATE:** [Current Date]
 
-**SUBJECT:** Response to Solicitation [Extract solicitation number] - [Extract title]
+**SUBJECT:** Response to Solicitation {solicitation_number} - {title}
 
-Dear [Extract POC name],
+Dear {poc_name},
 
-[Your Company Name] respectfully submits this response to Solicitation [Extract solicitation number], "[Extract title]."
+[Your Company Name] respectfully submits this response to Solicitation {solicitation_number}, "{title}."
 
 **Company Information**
+
 [Your Company Name] is a qualified contractor with UEI [Your UEI] and CAGE Code [Your CAGE Code]. Our headquarters are located at [Your Company Address]. We maintain all requisite certifications and security clearances necessary for government contracting.
 
 **Statement of Capability**
-Our company possesses the technical expertise and experience required for this opportunity. We have demonstrated capabilities in the following areas relevant to your requirements: [Based on company skills from the match, describe your relevant capabilities in paragraph form without bullet points].
+
+{capability_text} We have the technical expertise and resources necessary to successfully execute the requirements outlined in this solicitation.
 
 **Past Performance and References**
-Our track record includes successful completion of similar projects demonstrating our ability to deliver quality results on time and within budget. [Describe relevant past performance based on the match data, or note if establishing initial performance record].
+
+{performance_text} Our commitment to excellence and customer satisfaction has been consistently demonstrated across all our engagements.
 
 **Technical Approach**
-We understand that this opportunity requires [summarize key technical requirements from the enhanced description]. Our approach will leverage our expertise in [relevant company skills] to deliver a comprehensive solution that meets your objectives.
+
+We understand that this opportunity requires {requirements_summary}. Our approach will leverage our proven methodologies and experienced team to deliver a comprehensive solution that meets your objectives and exceeds expectations.
 
 **Conclusion**
-[Rewrite the rationale from JSON in formal, confident language]. We are committed to providing exceptional service and look forward to the opportunity to support your mission.
+
+{rationale} We are committed to providing exceptional service and look forward to the opportunity to support your mission and contribute to the success of this important initiative.
 
 Thank you for your consideration. Please contact me at [Your Phone Number] or [Your Email] for any additional information or clarification.
 
@@ -299,21 +416,35 @@ Respectfully submitted,
 [Your Phone Number]
 [Your Email]
 
-IMPORTANT: Replace ALL bracketed placeholders with actual data from the JSON. Do not leave any [Extract...] or [List...] instructions in the final output. Output must begin directly with "**Section 1:**" and continue with final user-readable text only.'''
+**Note:** Please replace all bracketed placeholders ([Your Name], [Your Company Name], etc.) with your actual company information before submitting."""
+        
+        return section2
 
+    def _generate_response_template(self, json_data: Dict[str, Any]) -> str:
+        """
+        Generate response template using fully deterministic approach - no AI required.
+        
+        Args:
+            json_data: Match result JSON data
+            
+        Returns:
+            str: Generated response template
+        """
         try:
-            logger.info(f"Using Bedrock Agent: {self.agent_id}")
-            # Call Bedrock Agent
-            generated_text = self._call_agent(self.agent_id, self.agent_alias_id, prompt_text)
+            logger.info("Using fully deterministic approach - generating both sections programmatically")
             
-            # Clean up AI thinking traces and meta-commentary
-            cleaned_text = self._clean_ai_thinking_traces(generated_text)
+            # Generate both sections programmatically
+            section1 = self._generate_section1_programmatically(json_data)
+            section2 = self._generate_section2_programmatically(json_data)
             
-            logger.info(f"Successfully generated response template using Bedrock Agent {self.agent_id}")
-            return cleaned_text
+            # Combine sections with separator
+            full_response = f"{section1}\n\n---\n\n{section2}"
+            
+            logger.info("Successfully generated response template using deterministic approach")
+            return full_response
             
         except Exception as e:
-            logger.error(f"Error calling Bedrock Agent {self.agent_id}: {str(e)}")
+            logger.error(f"Error generating deterministic response template: {str(e)}")
             raise e
     
     def _clean_ai_thinking_traces(self, text: str) -> str:

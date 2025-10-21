@@ -460,7 +460,7 @@ def process_sqs_record(record: Dict[str, Any],
                 'match_score': match_result.get('score', 0.0)
             })
             
-            sqs_key, runs_key = write_results_to_s3(
+            sqs_key, runs_key, category = write_results_to_s3(
                 match_result,
                 opportunity_id,
                 sqs_bucket,
@@ -499,7 +499,9 @@ def process_sqs_record(record: Dict[str, Any],
             'opportunity_id': opportunity_id,
             'sqs_key': sqs_key,
             'runs_key': runs_key,
+            'category': category,
             'match_score': match_result.get('score', 0.0),
+            'match_threshold': config.processing.match_threshold,
             'attachments_processed': len(attachments),
             'processing_status': {
                 'llm_processing': llm_processing_status,
@@ -764,13 +766,32 @@ def write_results_to_s3(match_result: Dict[str, Any],
                        runs_bucket: str,
                        error_handler: ErrorHandler) -> tuple:
     """
-    Write match results to S3 buckets.
+    Write match results to S3 buckets based on MATCH_THRESHOLD.
+    
+    Args:
+        match_result: The match result data
+        opportunity_id: Unique opportunity identifier
+        sqs_bucket: Target bucket for categorized results
+        runs_bucket: Target bucket for run logs
+        error_handler: Error handling utility
+        
+    Returns:
+        tuple: (sqs_key, runs_key, category)
     """
     current_time = datetime.now()
     
-    # Create S3 keys
-    sqs_key = f"{current_time.strftime('%Y-%m-%d')}/matches/{opportunity_id}.json"
+    # Get match threshold from config
+    match_threshold = config.processing.match_threshold
+    match_score = float(match_result.get('score', 0.0))
+    
+    # Determine category based on match threshold
+    category = "matches" if match_score >= match_threshold else "no_matches"
+    
+    # Create S3 keys with category-based folder structure
+    sqs_key = f"{current_time.strftime('%Y-%m-%d')}/{category}/{opportunity_id}.json"
     runs_key = f"runs/raw/{current_time.strftime('%Y%m%dt%H%MZ')}_{opportunity_id}.json"
+    
+    logger.info(f"Writing results: score={match_score:.3f}, threshold={match_threshold:.3f}, category={category}")
     
     try:
         # Write to SQS bucket
@@ -796,7 +817,7 @@ def write_results_to_s3(match_result: Dict[str, Any],
         )
         error_handler.log_s3_operation("write", runs_bucket, runs_key, success=True)
         
-        return sqs_key, runs_key
+        return sqs_key, runs_key, category
         
     except Exception as e:
         error_handler.log_s3_operation("write", sqs_bucket, sqs_key, success=False, error=e)

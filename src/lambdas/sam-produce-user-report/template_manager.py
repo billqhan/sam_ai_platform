@@ -192,15 +192,20 @@ Best regards,
         Returns:
             dict: Formatted data for templates
         """
-        # Extract opportunity summary
-        opportunity_summary = match_data.get('opportunity_summary', {})
-        
         # Format timestamp
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')
+        timestamp = match_data.get('timestamp', datetime.now().isoformat())
+        if 'T' in timestamp:
+            # Convert ISO format to readable format
+            try:
+                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                timestamp = dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+            except:
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')
         
         # Format match status
-        match_score = match_data.get('match_score', 0.0)
-        is_match = match_data.get('is_match', False)
+        match_score = match_data.get('score', 0.0)
+        match_threshold = 0.7  # Default threshold
+        is_match = match_score >= match_threshold
         match_status = "MATCH" if is_match else "NO MATCH"
         match_percentage = match_score * 100
         
@@ -208,22 +213,26 @@ Best regards,
         required_skills = self._format_list(match_data.get('opportunity_required_skills', []))
         company_skills = self._format_list(match_data.get('company_skills', []))
         past_performance = self._format_list(match_data.get('past_performance', []))
-        naics_codes = self._format_list(opportunity_summary.get('naics_codes', []))
         
         # Format citations
         citations = self._format_citations(match_data.get('citations', []))
         
+        # Extract POC information
+        poc_name = match_data.get('pointOfContact.fullName', 'Contracting Officer')
+        if not poc_name or poc_name == '':
+            poc_name = 'Contracting Officer'
+        
         # Prepare template data
         template_data = {
             'timestamp': timestamp,
-            'solicitation_id': match_data.get('solicitation_id', 'Unknown'),
+            'solicitation_id': match_data.get('solicitationNumber', match_data.get('solicitation_id', 'Unknown')),
             'match_score': match_score,
             'match_percentage': match_percentage,
             'match_status': match_status,
-            'title': opportunity_summary.get('title', 'Unknown Title'),
-            'value': opportunity_summary.get('value', 'Not specified'),
-            'deadline': opportunity_summary.get('deadline', 'Not specified'),
-            'naics_codes': naics_codes,
+            'title': match_data.get('title', 'Unknown Title'),
+            'value': 'Not specified',  # This field is not in the current match data structure
+            'deadline': match_data.get('responseDeadLine', 'Not specified'),
+            'naics_codes': 'Not specified',  # This field is not in the current match data structure
             'rationale': match_data.get('rationale', 'No rationale provided'),
             'required_skills': required_skills,
             'company_skills': company_skills,
@@ -232,7 +241,7 @@ Best regards,
             'company_name': company_info.get('name', 'Your Company'),
             'company_contact': company_info.get('contact', 'contact@yourcompany.com'),
             'contact_name': company_info.get('contact_name', 'Business Development Team'),
-            'poc_name': 'Contracting Officer',  # Default, could be extracted from opportunity data
+            'poc_name': poc_name,
             'key_qualifications': self._extract_key_qualifications(match_data),
             'relevant_experience': self._extract_relevant_experience(match_data),
             'company_focus_areas': self._extract_company_focus_areas(match_data)

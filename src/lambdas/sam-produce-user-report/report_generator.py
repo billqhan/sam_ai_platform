@@ -46,8 +46,8 @@ class ReportGenerator:
         Returns:
             str: Formatted text report
         """
-        logger.info("Generating text report", 
-                   solicitation_id=match_data.get('solicitation_id'))
+        solicitation_id = match_data.get('solicitationNumber') or match_data.get('solicitation_id', 'Unknown')
+        logger.info(f"Generating text report: solicitation_id={solicitation_id}")
         
         # Prepare template data
         template_data = self.template_manager.prepare_template_data(match_data, self.company_info)
@@ -118,8 +118,7 @@ class ReportGenerator:
         # Combine all sections
         full_report = "\n".join(report_sections)
         
-        logger.info("Text report generated successfully", 
-                   length=len(full_report))
+        logger.info(f"Text report generated successfully: length={len(full_report)}")
         
         return full_report
     
@@ -137,8 +136,7 @@ class ReportGenerator:
             logger.warning("python-docx not available, generating placeholder document")
             return self._generate_placeholder_document(match_data)
         
-        logger.info("Generating Word document", 
-                   solicitation_id=match_data.get('solicitation_id'))
+        logger.info(f"Generating Word document: solicitation_id={match_data.get('solicitation_id')}")
         
         # Create new document
         doc = Document()
@@ -193,8 +191,7 @@ class ReportGenerator:
         Returns:
             str: Formatted email template
         """
-        logger.info("Generating email template", 
-                   solicitation_id=match_data.get('solicitation_id'))
+        logger.info(f"Generating email template: solicitation_id={match_data.get('solicitation_id')}")
         
         # Prepare template data
         template_data = self.template_manager.prepare_template_data(match_data, self.company_info)
@@ -217,26 +214,117 @@ class ReportGenerator:
         # Combine subject and body
         email_template = f"Subject: {subject}\n\n{body}"
         
-        logger.info("Email template generated successfully", 
-                   is_match=is_match)
+        logger.info(f"Email template generated successfully: is_match={is_match}")
         
         return email_template
     
     def _generate_placeholder_document(self, match_data: Dict[str, Any]) -> bytes:
-        """Generate a placeholder document when python-docx is not available."""
-        placeholder_text = f"""
-SAM OPPORTUNITY MATCH REPORT
-Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
-
-Solicitation ID: {match_data.get('solicitation_id', 'Unknown')}
-Match Score: {match_data.get('match_score', 0.0):.2f}
-
-This is a placeholder document. The full Word document could not be generated 
-because python-docx library is not available.
-
-Please refer to the text report for complete details.
-"""
-        return placeholder_text.encode('utf-8')
+        """Generate a Rich Text Format document that can be opened by Word."""
+        # Prepare template data
+        template_data = self.template_manager.prepare_template_data(match_data, self.company_info)
+        
+        # Generate RTF document that Word can open
+        rtf_content = r"""{\rtf1\ansi\deff0 {\fonttbl {\f0 Times New Roman;}}
+\f0\fs24 
+{\b\fs32 SAM OPPORTUNITY MATCH REPORT\par}
+\par
+{\b === BASIC INFORMATION ===\par}
+{\b Solicitation ID:} """ + template_data.get('solicitation_id', 'Unknown') + r"""\par
+{\b Title:} """ + template_data.get('title', 'Unknown').replace('\\', '\\\\').replace('{', '\\{').replace('}', '\\}') + r"""\par
+{\b Match Score:} """ + f"{template_data.get('match_score', 0.0):.2f} ({template_data.get('match_percentage', 0.0):.1f}%)" + r"""\par
+{\b Match Status:} """ + template_data.get('match_status', 'Unknown') + r"""\par
+{\b Generated:} """ + template_data.get('timestamp', 'Unknown') + r"""\par
+\par
+{\b === OPPORTUNITY SUMMARY ===\par}
+{\b Title:} """ + template_data.get('title', 'Unknown').replace('\\', '\\\\').replace('{', '\\{').replace('}', '\\}') + r"""\par
+{\b Deadline:} """ + template_data.get('deadline', 'Not specified') + r"""\par
+{\b Value:} """ + template_data.get('value', 'Not specified') + r"""\par
+\par
+{\b === MATCH ANALYSIS ===\par}
+{\b Match Score:} """ + f"{template_data.get('match_score', 0.0):.2f}" + r"""\par
+{\b Match Status:} """ + template_data.get('match_status', 'Unknown') + r"""\par
+\par
+{\b Rationale:\par}
+""" + match_data.get('rationale', 'No rationale provided').replace('\\', '\\\\').replace('{', '\\{').replace('}', '\\}') + r"""\par
+\par
+{\b === OPPORTUNITY REQUIRED SKILLS ===\par}
+""" + self._format_skills_for_rtf(match_data.get('opportunity_required_skills', [])) + r"""\par
+\par
+{\b === COMPANY MATCHING SKILLS ===\par}
+""" + self._format_skills_for_rtf(match_data.get('company_skills', [])) + r"""\par
+\par
+{\b === PAST PERFORMANCE ===\par}
+""" + self._format_skills_for_rtf(match_data.get('past_performance', [])) + r"""\par
+\par
+{\b === SUPPORTING CITATIONS ===\par}
+""" + self._format_citations_for_rtf(match_data.get('citations', [])) + r"""\par
+\par
+{\b === REPORT INFORMATION ===\par}
+Report generated by AI RFP Response Agent\par
+{\b Company:} """ + template_data.get('company_name', 'Your Company') + r"""\par
+{\b Contact:} """ + template_data.get('company_contact', 'contact@yourcompany.com') + r"""\par
+{\b Generated:} """ + template_data.get('timestamp', 'Unknown') + r"""\par
+\par
+{\i Note: This RTF document can be opened and edited in Microsoft Word.\par}
+}"""
+        
+        return rtf_content.encode('utf-8')
+    
+    def _format_skills_for_document(self, skills: list) -> str:
+        """Format skills list for document display."""
+        if not skills:
+            return "None specified"
+        return "\n".join(f"• {skill}" for skill in skills)
+    
+    def _format_citations_for_document(self, citations: list) -> str:
+        """Format citations for document display."""
+        if not citations:
+            return "No citations available"
+        
+        formatted_citations = []
+        for i, citation in enumerate(citations, 1):
+            doc_title = citation.get('document_title', 'Unknown Document')
+            section = citation.get('section_or_page', 'Unknown Section')
+            excerpt = citation.get('excerpt', 'No excerpt available')
+            
+            formatted_citation = f"{i}. {doc_title} - {section}\n   \"{excerpt}\""
+            formatted_citations.append(formatted_citation)
+        
+        return "\n\n".join(formatted_citations)
+    
+    def _format_skills_for_rtf(self, skills: list) -> str:
+        """Format skills list for RTF document."""
+        if not skills:
+            return "None specified"
+        
+        rtf_skills = []
+        for skill in skills:
+            # Escape RTF special characters
+            escaped_skill = skill.replace('\\', '\\\\').replace('{', '\\{').replace('}', '\\}')
+            rtf_skills.append(f"\\bullet {escaped_skill}\\par")
+        
+        return "\n".join(rtf_skills)
+    
+    def _format_citations_for_rtf(self, citations: list) -> str:
+        """Format citations for RTF document."""
+        if not citations:
+            return "No citations available"
+        
+        rtf_citations = []
+        for i, citation in enumerate(citations, 1):
+            doc_title = citation.get('document_title', 'Unknown Document')
+            section = citation.get('section_or_page', 'Unknown Section')
+            excerpt = citation.get('excerpt', 'No excerpt available')
+            
+            # Escape RTF special characters
+            escaped_title = doc_title.replace('\\', '\\\\').replace('{', '\\{').replace('}', '\\}')
+            escaped_section = section.replace('\\', '\\\\').replace('{', '\\{').replace('}', '\\}')
+            escaped_excerpt = excerpt.replace('\\', '\\\\').replace('{', '\\{').replace('}', '\\}')
+            
+            rtf_citation = f"{i}. {escaped_title} - {escaped_section}\\par   \\\"{escaped_excerpt}\\\"\\par"
+            rtf_citations.append(rtf_citation)
+        
+        return "\\par\n".join(rtf_citations)
     
     def _add_basic_info_table(self, doc, template_data: Dict[str, Any]) -> None:
         """Add basic information table to Word document."""

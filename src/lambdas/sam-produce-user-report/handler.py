@@ -65,12 +65,10 @@ class UserReportHandler:
                 object_key = unquote_plus(s3_info.get('object', {}).get('key', ''))
                 
                 if not bucket_name or not object_key:
-                    logger.warning("Invalid S3 record format", record=record)
+                    logger.warning(f"Invalid S3 record format: {record}")
                     continue
                 
-                logger.info("Processing match result file", 
-                           bucket=bucket_name, 
-                           key=object_key)
+                logger.info(f"Processing match result file: bucket={bucket_name}, key={object_key}")
                 
                 # Only process JSON files in the correct structure
                 if not self._is_valid_match_result_file(object_key):
@@ -83,13 +81,11 @@ class UserReportHandler:
                 self._generate_reports_for_file(bucket_name, object_key)
                 results['successful_reports'] += 1
                 
-                logger.info("Successfully generated reports", 
-                           bucket=bucket_name, 
-                           key=object_key)
+                logger.info(f"Successfully generated reports: bucket={bucket_name}, key={object_key}")
                 
             except Exception as e:
                 error_msg = f"Failed to process record: {str(e)}"
-                logger.error(error_msg, record=record, error=str(e))
+                logger.error(f"{error_msg}: record={record}, error={str(e)}")
                 results['failed_reports'] += 1
                 results['errors'].append(error_msg)
         
@@ -118,9 +114,8 @@ class UserReportHandler:
         except ValueError:
             return False
         
-        # Validate category
-        valid_categories = ['matches', 'no_matches', 'errors']
-        if category not in valid_categories:
+        # Only process files from the "matches" category
+        if category != 'matches':
             return False
         
         # Validate filename ends with .json
@@ -146,12 +141,11 @@ class UserReportHandler:
             raise RetryableError(f"Failed to download match result file: {str(e)}")
         
         # Extract solicitation ID from the match data
-        solicitation_id = match_data.get('solicitation_id')
+        solicitation_id = match_data.get('solicitationNumber') or match_data.get('solicitation_id')
         if not solicitation_id:
-            raise NonRetryableError("Match result missing solicitation_id")
+            raise NonRetryableError("Match result missing solicitationNumber or solicitation_id")
         
-        logger.info("Generating reports for opportunity", 
-                   solicitation_id=solicitation_id)
+        logger.info(f"Generating reports for opportunity: solicitation_id={solicitation_id}")
         
         # Generate text report
         text_report = self.report_generator.generate_text_report(match_data)
@@ -188,13 +182,13 @@ class UserReportHandler:
             ContentType='text/plain'
         )
         
-        # Store Word document
-        word_key = f"{base_key}/report.docx"
+        # Store RTF document (can be opened by Word)
+        word_key = f"{base_key}/report.rtf"
         self.s3_client.put_object(
             Bucket=self.output_bucket,
             Key=word_key,
             Body=word_doc_bytes,
-            ContentType='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            ContentType='application/rtf'
         )
         
         # Store email template
@@ -206,11 +200,7 @@ class UserReportHandler:
             ContentType='text/plain'
         )
         
-        logger.info("Stored all reports", 
-                   solicitation_id=solicitation_id,
-                   text_key=text_key,
-                   word_key=word_key,
-                   email_key=email_key)
+        logger.info(f"Stored all reports: solicitation_id={solicitation_id}, text_key={text_key}, word_key={word_key}, email_key={email_key}")
 
 # Global handler instance
 handler = UserReportHandler()
@@ -227,13 +217,13 @@ def lambda_handler(event, context):
     Returns:
         dict: Response with status and processing results
     """
-    logger.info("Starting user report generation", event=event)
+    logger.info(f"Starting user report generation: event={event}")
     
     try:
         # Process the S3 event
         results = handler.process_s3_event(event)
         
-        logger.info("User report generation completed", results=results)
+        logger.info(f"User report generation completed: results={results}")
         
         return {
             'statusCode': 200,
@@ -245,5 +235,5 @@ def lambda_handler(event, context):
         }
         
     except Exception as e:
-        logger.error("User report generation failed", error=str(e))
+        logger.error(f"User report generation failed: error={str(e)}")
         raise

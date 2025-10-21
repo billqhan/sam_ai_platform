@@ -131,3 +131,6 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+# Infrastructure files that don't match deployed state
+infrastructure/cloudformation/bedrock-knowledge-base.yaml
+infrastructure/cloudformation/master-template-with-kb.yaml

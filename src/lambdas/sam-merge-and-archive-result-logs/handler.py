@@ -40,21 +40,28 @@ def lambda_handler(event, context):
     archive_prefix = "runs/archive/"
     summary = []
     to_archive = []
+    old_files_processed = 0
     
     for key in list_s3_keys(raw_prefix):
-        # Use only files updated in last 5min bucket
         obj = s3.head_object(Bucket=S3_BUCKET, Key=key)
         last_mod = obj['LastModified']
-        if not (bucket_start <= last_mod < bucket_end):
-            continue
-        # Load and add to summary
-        body = s3.get_object(Bucket=S3_BUCKET, Key=key)['Body'].read()
-        try:
-            record = json.loads(body)
-            summary.append(record)
-            to_archive.append(key)
-        except Exception:
-            continue  # Optionally: log/collect parse fails
+        
+        # Process files from current 5-minute bucket OR older files that were never processed
+        in_current_bucket = bucket_start <= last_mod < bucket_end
+        is_old_file = last_mod < bucket_start
+        
+        if in_current_bucket or is_old_file:
+            # Load and add to summary
+            body = s3.get_object(Bucket=S3_BUCKET, Key=key)['Body'].read()
+            try:
+                record = json.loads(body)
+                summary.append(record)
+                to_archive.append(key)
+                if is_old_file:
+                    old_files_processed += 1
+            except Exception as e:
+                print(f"Failed to parse JSON for {key}: {e}")
+                continue
     
     if summary:
         s3.put_object(
@@ -63,6 +70,9 @@ def lambda_handler(event, context):
             Body=json.dumps(summary, indent=2).encode('utf-8')
         )
         print(f"Wrote {len(summary)} records to {summary_key}")
+        if old_files_processed > 0:
+            print(f"Processed {old_files_processed} old files that were previously missed")
+        
         # Move to archive after merging
         for key in to_archive:
             archive_key = archive_prefix + os.path.basename(key)
@@ -72,4 +82,9 @@ def lambda_handler(event, context):
     else:
         print(f"No new records found for this interval {bucket_start} to {bucket_end} .")
 
-    return {"processed": len(summary), "archived": len(to_archive), "summary_key": summary_key}
+    return {
+        "processed": len(summary), 
+        "archived": len(to_archive), 
+        "old_files_processed": old_files_processed,
+        "summary_key": summary_key
+    }

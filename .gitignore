@@ -133,4 +133,8 @@ share/python-wheels/
 MANIFEST
 # Infrastructure files that don't match deployed state
 infrastructure/cloudformation/bedrock-knowledge-base.yaml
-infrastructure/cloudformation/master-template-with-kb.yaml
+infrastructure/cloudformation/master-template-with-kb.yaml# La
+mbda deployment packages
+lambda-deployment-package*.zip
+*-deployment-package*.zip
+deployment-package*.zip

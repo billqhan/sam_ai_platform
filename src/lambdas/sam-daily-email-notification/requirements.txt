@@ -1,0 +1,2 @@
+# No additional requirements beyond boto3 (included in Lambda runtime)
+# All dependencies are part of the standard Python library or AWS Lambda runtime

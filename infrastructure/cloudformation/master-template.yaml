@@ -84,6 +84,7 @@ Resources:
         Environment: !Ref Environment
         SamGovDailyDownloadFunctionArn: !GetAtt LambdaFunctionsStack.Outputs.SamGovDailyDownloadFunctionArn
         SamMergeAndArchiveResultLogsFunctionArn: !GetAtt LambdaFunctionsStack.Outputs.SamMergeAndArchiveResultLogsFunctionArn
+        SamDailyEmailNotificationFunctionArn: !GetAtt LambdaFunctionsStack.Outputs.SamDailyEmailNotificationFunctionArn
         BucketPrefix: !Ref BucketPrefix
       Tags:
         - Key: Environment

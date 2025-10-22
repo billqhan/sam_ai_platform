@@ -15,6 +15,10 @@ Parameters:
     Type: String
     Description: 'ARN of the merge and archive Lambda function'
   
+  SamDailyEmailNotificationFunctionArn:
+    Type: String
+    Description: 'ARN of the daily email notification Lambda function'
+  
   BucketPrefix:
     Type: String
     Default: ''
@@ -44,6 +48,17 @@ Resources:
         - Arn: !Ref SamMergeAndArchiveResultLogsFunctionArn
           Id: 'SamMergeAndArchiveTarget'
 
+  SamDailyEmailNotificationRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'sam-daily-email-notification-${Environment}'
+      Description: 'Trigger daily email notification Lambda function at 10am EST'
+      ScheduleExpression: 'cron(0 15 * * ? *)'  # 10am EST = 3pm UTC (15:00)
+      State: ENABLED
+      Targets:
+        - Arn: !Ref SamDailyEmailNotificationFunctionArn
+          Id: 'SamDailyEmailNotificationTarget'
+
   # Lambda Permissions for EventBridge
   SamGovDailyDownloadPermission:
     Type: AWS::Lambda::Permission
@@ -61,6 +76,14 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt SamLambdaEvery5MinSummarizerRule.Arn
 
+  SamDailyEmailNotificationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SamDailyEmailNotificationFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SamDailyEmailNotificationRule.Arn
+
 Outputs:
   SamGovDailyDownloadRuleArn:
     Description: 'ARN of the daily download EventBridge rule'
@@ -73,3 +96,9 @@ Outputs:
     Value: !GetAtt SamLambdaEvery5MinSummarizerRule.Arn
     Export:
       Name: !Sub '${AWS::StackName}-SamLambdaEvery5MinSummarizerRule'
+  
+  SamDailyEmailNotificationRuleArn:
+    Description: 'ARN of the daily email notification EventBridge rule'
+    Value: !GetAtt SamDailyEmailNotificationRule.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamDailyEmailNotificationRule'

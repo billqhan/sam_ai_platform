@@ -30,6 +30,7 @@ $LambdaFunctions = @{
     "sam-sqs-generate-match-reports" = "src/lambdas/sam-sqs-generate-match-reports"
     "sam-produce-user-report" = "src/lambdas/sam-produce-user-report"
     "sam-email-notification" = "src/lambdas/sam-email-notification"
+    "sam-daily-email-notification" = "src/lambdas/sam-daily-email-notification"
     "sam-merge-and-archive-result-logs" = "src/lambdas/sam-merge-and-archive-result-logs"
     "sam-produce-web-reports" = "src/lambdas/sam-produce-web-reports"
 }

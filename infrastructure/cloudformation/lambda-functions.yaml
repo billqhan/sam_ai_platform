@@ -333,6 +333,56 @@ Resources:
                     - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-website-${Environment}/*'
                     - !Sub 'arn:aws:s3:::sam-website-${Environment}/*'
 
+  SamDailyEmailNotificationRole:
+    Type: AWS::IAM::Role
+    Properties:
+
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-opportunity-responses-${Environment}'
+                    - !Sub 'arn:aws:s3:::sam-opportunity-responses-${Environment}'
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-opportunity-responses-${Environment}/*'
+                    - !Sub 'arn:aws:s3:::sam-opportunity-responses-${Environment}/*'
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-subscribers'
+                    - !Sub 'arn:aws:s3:::sam-subscribers'
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-subscribers/*'
+                    - !Sub 'arn:aws:s3:::sam-subscribers/*'
+        - PolicyName: SESAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ses:SendRawEmail
+                  - ses:GetIdentityVerificationAttributes
+                Resource: '*'
+
   # Lambda Functions
   SamGovDailyDownloadFunction:
     Type: AWS::Lambda::Function
@@ -525,6 +575,50 @@ Resources:
           DASHBOARD_PATH: 'dashboards/'
           X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-produce-web-reports'
 
+  SamDailyEmailNotificationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !If 
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-daily-email-notification-${Environment}'
+        - !Sub 'sam-daily-email-notification-${Environment}'
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt SamDailyEmailNotificationRole.Arn
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Function placeholder'}
+      MemorySize: 512
+      Timeout: 300  # 5 minutes
+      TracingConfig:
+        Mode: Active
+      Environment:
+        Variables:
+          EMAIL_ENABLED: 'true'
+          SES_REGION: 'us-east-1'
+          FROM_EMAIL: 'mga.aws2024@gmail.com'
+          EMAIL_SUBJECT_TEMPLATE: 'Daily AWS AI-Powered RFI/RFP Response for {date}'
+          EMAIL_BODY_TEMPLATE: 'Dear {name}, here is the Daily Website for your review.\n\nI have attached a zip file containing only the high scoring opportunity matches for {date}.\n\nPlease review the Daily Opportunities Website at the URL below for a summary of all data that was processed.'
+          OPPORTUNITY_RESPONSES_BUCKET: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-opportunity-responses-${Environment}'
+            - !Sub 'sam-opportunity-responses-${Environment}'
+          WEBSITE_BUCKET: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-website-${Environment}'
+            - !Sub 'sam-website-${Environment}'
+          WEBSITE_BASE_URL: !If 
+            - HasBucketPrefix
+            - !Sub 'http://${BucketPrefix}-sam-website-${Environment}.s3-website-us-east-1.amazonaws.com'
+            - !Sub 'http://sam-website-${Environment}.s3-website-us-east-1.amazonaws.com'
+          SUBSCRIBERS_BUCKET: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-subscribers'
+            - !Sub 'sam-subscribers'
+          SUBSCRIBERS_FILE: 'subscribers_daily.csv'
+          X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-daily-email-notification'
+
   # Event Source Mappings
   SqsEventSourceMapping:
     Type: AWS::Lambda::EventSourceMapping
@@ -554,3 +648,9 @@ Outputs:
     Value: !GetAtt SamMergeAndArchiveResultLogsFunction.Arn
     Export:
       Name: !Sub '${AWS::StackName}-SamMergeAndArchiveResultLogsFunction'
+  
+  SamDailyEmailNotificationFunctionArn:
+    Description: 'ARN of the daily email notification Lambda function'
+    Value: !GetAtt SamDailyEmailNotificationFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamDailyEmailNotificationFunction'

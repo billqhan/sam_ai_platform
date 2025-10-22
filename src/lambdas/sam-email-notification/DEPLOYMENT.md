@@ -79,6 +79,7 @@ Create environment variables configuration file:
 ```json
 {
   "Variables": {
+    "EMAIL_ENABLED": "false",
     "FROM_EMAIL": "mga.aws2024@gmail.com",
     "SUBSCRIBERS_BUCKET": "ktest-sam-subscribers", 
     "SUBSCRIBERS_FILE": "subscribers.csv",
@@ -261,6 +262,7 @@ This handles steps 5-8 automatically (though you'll still need to configure S3 e
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
+| `EMAIL_ENABLED` | No | false | Enable/disable email notifications (set to "true" to enable) |
 | `FROM_EMAIL` | Yes | - | Verified SES sender email |
 | `SUBSCRIBERS_BUCKET` | Yes | - | S3 bucket with CSV file |
 | `SUBSCRIBERS_FILE` | No | subscribers.csv | CSV filename |

@@ -21,6 +21,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Email Configuration
+EMAIL_ENABLED = os.environ.get("EMAIL_ENABLED", "false").lower() in ['true', '1', 'yes', 'enabled']
 SES_REGION = os.environ.get("SES_REGION", "us-east-1")
 FROM_EMAIL = os.environ.get("FROM_EMAIL", "noreply@example.com")
 EMAIL_SUBJECT_TEMPLATE = os.environ.get("EMAIL_SUBJECT_TEMPLATE", "AWS AI-Powered RFI/RFP Response for {solicitation_number}")
@@ -55,6 +56,11 @@ def lambda_handler(event, context):
             
             # Extract solicitation number from filename or file content
             solicitation_number = extract_solicitation_number(object_key, source_bucket)
+            
+            # Check if email notifications are enabled
+            if not EMAIL_ENABLED:
+                logger.info(f"Email notifications are disabled (EMAIL_ENABLED=false). Skipping email for {object_key}")
+                continue
             
             # Send email notification
             send_email_notification(source_bucket, object_key, solicitation_number)

@@ -18,6 +18,7 @@ This lambda function sends email notifications via AWS SES when new response tem
 - `SUBSCRIBERS_FILE`: CSV filename (default: "subscribers.csv")
 
 ### Optional
+- `EMAIL_ENABLED`: Enable/disable email notifications (default: "false"). Set to "true" to enable email sending
 - `SES_REGION`: AWS region for SES (default: "us-east-1")
 - `EMAIL_SUBJECT_TEMPLATE`: Email subject template with {solicitation_number} placeholder (default: "AWS AI-Powered RFI/RFP Response for {solicitation_number}")
 - `EMAIL_BODY`: Email body text (default: "Dear Team, here is the latest match for your review.")
@@ -54,6 +55,7 @@ To add/remove subscribers:
 ## Example Environment Variables
 
 ```bash
+EMAIL_ENABLED=false
 FROM_EMAIL=noreply@yourcompany.com
 SUBSCRIBERS_BUCKET=my-company-config
 SUBSCRIBERS_FILE=email-subscribers.csv

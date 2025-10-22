@@ -1,5 +1,6 @@
 {
   "Variables": {
+    "EMAIL_ENABLED": "true",
     "FROM_EMAIL": "mga.aws2024@gmail.com",
     "SUBSCRIBERS_BUCKET": "ktest-sam-subscribers", 
     "SUBSCRIBERS_FILE": "subscribers.csv",

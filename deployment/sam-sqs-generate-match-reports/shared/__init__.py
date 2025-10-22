@@ -10,9 +10,11 @@ from .error_handling import (
     ErrorType, 
     retry_with_backoff, 
     handle_lambda_error,
-    CircuitBreaker
+    CircuitBreaker,
+    ErrorHandler
 )
 from .config import config, Constants
+from .llm_data_extraction import get_llm_data_extractor, get_bedrock_llm_client, LLMDataExtractor, BedrockLLMClient
 
 __all__ = [
     'aws_clients',
@@ -26,6 +28,11 @@ __all__ = [
     'retry_with_backoff',
     'handle_lambda_error',
     'CircuitBreaker',
+    'ErrorHandler',
     'config',
-    'Constants'
+    'Constants',
+    'get_llm_data_extractor',
+    'get_bedrock_llm_client',
+    'LLMDataExtractor',
+    'BedrockLLMClient'
 ]

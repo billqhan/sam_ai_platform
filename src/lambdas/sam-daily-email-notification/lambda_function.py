@@ -39,6 +39,9 @@ WEBSITE_BASE_URL = os.environ.get("WEBSITE_BASE_URL", "http://ktest-sam-website-
 SUBSCRIBERS_BUCKET = os.environ.get("SUBSCRIBERS_BUCKET", "ktest-sam-subscribers")
 SUBSCRIBERS_FILE = os.environ.get("SUBSCRIBERS_FILE", "subscribers_daily.csv")
 
+# Attachment Configuration
+ATTACHMENT_TYPE = os.environ.get("ATTACHMENT_TYPE", "txt").lower()
+
 # Initialize AWS clients
 s3_client = boto3.client('s3')
 ses_client = boto3.client('ses', region_name=SES_REGION)
@@ -73,8 +76,8 @@ def lambda_handler(event, context):
         # Generate website URL for the most recent date
         website_url = generate_website_url(most_recent_date)
         
-        # Create zip file with RTF matches for the most recent date
-        zip_content = create_rtf_zip(most_recent_date)
+        # Create zip file with attachment matches for the most recent date
+        zip_content = create_attachment_zip(most_recent_date)
         
         # Send email notification
         send_daily_email_notification(most_recent_date, website_url, zip_content)
@@ -125,7 +128,7 @@ def find_most_recent_processed_date():
         date_folders.sort(reverse=True)
         most_recent = date_folders[0]
         
-        # Verify that this date has matches folder with RTF files
+        # Verify that this date has matches folder with attachment files
         matches_prefix = f"{most_recent}/matches/"
         matches_response = s3_client.list_objects_v2(
             Bucket=OPPORTUNITY_RESPONSES_BUCKET,
@@ -165,15 +168,21 @@ def generate_website_url(date_str):
         logger.error(f"Error generating website URL: {str(e)}")
         return f"{WEBSITE_BASE_URL}/dashboards/"
 
-def create_rtf_zip(date_str):
+def create_attachment_zip(date_str):
     """
-    Create a zip file containing all RTF files from the matches folder for the given date.
+    Create a zip file containing all attachment files from the matches folder for the given date.
+    File type is determined by ATTACHMENT_TYPE environment variable (rtf or txt).
     Returns zip file content as bytes.
     """
     try:
         matches_prefix = f"{date_str}/matches/"
         
-        # List all RTF files in the matches folder
+        # Validate attachment type
+        if ATTACHMENT_TYPE not in ['rtf', 'txt']:
+            logger.error(f"Invalid ATTACHMENT_TYPE: {ATTACHMENT_TYPE}. Must be 'rtf' or 'txt'")
+            return None
+        
+        # List all files in the matches folder
         response = s3_client.list_objects_v2(
             Bucket=OPPORTUNITY_RESPONSES_BUCKET,
             Prefix=matches_prefix
@@ -183,42 +192,43 @@ def create_rtf_zip(date_str):
             logger.warning(f"No files found in matches folder for date {date_str}")
             return None
         
-        # Filter RTF files
-        rtf_files = [obj for obj in response['Contents'] if obj['Key'].lower().endswith('.rtf')]
+        # Filter files by attachment type
+        file_extension = f".{ATTACHMENT_TYPE}"
+        attachment_files = [obj for obj in response['Contents'] if obj['Key'].lower().endswith(file_extension)]
         
-        if not rtf_files:
-            logger.warning(f"No RTF files found in matches folder for date {date_str}")
+        if not attachment_files:
+            logger.warning(f"No {ATTACHMENT_TYPE.upper()} files found in matches folder for date {date_str}")
             return None
         
-        logger.info(f"Found {len(rtf_files)} RTF files for date {date_str}")
+        logger.info(f"Found {len(attachment_files)} {ATTACHMENT_TYPE.upper()} files for date {date_str}")
         
         # Create zip file in memory
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for rtf_obj in rtf_files:
+            for file_obj in attachment_files:
                 try:
-                    # Download RTF file from S3
-                    rtf_response = s3_client.get_object(
+                    # Download file from S3
+                    file_response = s3_client.get_object(
                         Bucket=OPPORTUNITY_RESPONSES_BUCKET,
-                        Key=rtf_obj['Key']
+                        Key=file_obj['Key']
                     )
-                    rtf_content = rtf_response['Body'].read()
+                    file_content = file_response['Body'].read()
                     
                     # Add to zip with just the filename (not full path)
-                    filename = os.path.basename(rtf_obj['Key'])
-                    zip_file.writestr(filename, rtf_content)
+                    filename = os.path.basename(file_obj['Key'])
+                    zip_file.writestr(filename, file_content)
                     
                 except Exception as e:
-                    logger.error(f"Error adding {rtf_obj['Key']} to zip: {str(e)}")
+                    logger.error(f"Error adding {file_obj['Key']} to zip: {str(e)}")
                     continue
         
         zip_content = zip_buffer.getvalue()
-        logger.info(f"Created zip file with {len(rtf_files)} RTF files, size: {len(zip_content)} bytes")
+        logger.info(f"Created zip file with {len(attachment_files)} {ATTACHMENT_TYPE.upper()} files, size: {len(zip_content)} bytes")
         
         return zip_content
         
     except Exception as e:
-        logger.error(f"Error creating RTF zip file: {str(e)}")
+        logger.error(f"Error creating {ATTACHMENT_TYPE.upper()} zip file: {str(e)}")
         return None
 
 def load_daily_subscribers():
@@ -258,7 +268,7 @@ def load_daily_subscribers():
 
 def send_daily_email_notification(date_str, website_url, zip_content):
     """
-    Send personalized daily email notifications with website link and RTF zip attachment.
+    Send personalized daily email notifications with website link and attachment zip file.
     Sends individual emails to each subscriber with their name personalized.
     """
     try:
@@ -293,7 +303,7 @@ def send_daily_email_notification(date_str, website_url, zip_content):
                 
                 # Add zip attachment if available
                 if zip_content:
-                    zip_filename = f"high_scoring_matches_{date_str.replace('-', '')}.zip"
+                    zip_filename = f"high_scoring_matches_{ATTACHMENT_TYPE}_{date_str.replace('-', '')}.zip"
                     attachment = MIMEApplication(zip_content)
                     attachment.add_header('Content-Disposition', 'attachment', filename=zip_filename)
                     msg.attach(attachment)
@@ -322,8 +332,8 @@ def send_daily_email_notification(date_str, website_url, zip_content):
         logger.info(f"  Subject: {EMAIL_SUBJECT_TEMPLATE.format(date=date_str)}")
         
         if zip_content:
-            zip_filename = f"high_scoring_matches_{date_str.replace('-', '')}.zip"
-            logger.info(f"  Attachment: {zip_filename}")
+            zip_filename = f"high_scoring_matches_{ATTACHMENT_TYPE}_{date_str.replace('-', '')}.zip"
+            logger.info(f"  Attachment: {zip_filename} (Type: {ATTACHMENT_TYPE.upper()})")
         
         if failed_sends > 0:
             logger.warning(f"Some emails failed to send. Check logs for details.")

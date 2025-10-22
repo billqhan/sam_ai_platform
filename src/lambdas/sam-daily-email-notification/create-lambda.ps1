@@ -171,7 +171,8 @@ if ($LASTEXITCODE -eq 0) {
         "WEBSITE_BUCKET": "$BucketPrefix-sam-website-$Environment",
         "WEBSITE_BASE_URL": "http://$BucketPrefix-sam-website-$Environment.s3-website-us-east-1.amazonaws.com",
         "SUBSCRIBERS_BUCKET": "$BucketPrefix-sam-subscribers",
-        "SUBSCRIBERS_FILE": "subscribers_daily.csv"
+        "SUBSCRIBERS_FILE": "subscribers_daily.csv",
+        "ATTACHMENT_TYPE": "txt"
     }
 }
 "@

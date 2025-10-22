@@ -93,12 +93,19 @@ class AWSClients:
     
     def __init__(self):
         self._s3 = None
+        self._bedrock_agent = None
     
     @property
     def s3(self):
         if self._s3 is None:
             self._s3 = boto3.client('s3')
         return self._s3
+    
+    @property
+    def bedrock_agent(self):
+        if self._bedrock_agent is None:
+            self._bedrock_agent = boto3.client("bedrock-agent-runtime")
+        return self._bedrock_agent
 
 # Global instances
 config = ConfigManager()

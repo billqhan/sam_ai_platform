@@ -1,0 +1,5 @@
+email,name,active,subscription_date
+john.doe@company.com,John Doe,true,2024-01-15
+jane.smith@company.com,Jane Smith,true,2024-01-20
+manager@company.com,Team Manager,true,2024-01-10
+old.user@company.com,Old User,false,2023-12-01

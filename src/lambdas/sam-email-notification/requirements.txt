@@ -1,0 +1,2 @@
+# No additional dependencies required
+# Uses built-in Python libraries and boto3 (available in Lambda runtime)

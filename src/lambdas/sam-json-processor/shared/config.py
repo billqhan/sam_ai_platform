@@ -187,6 +187,7 @@ class Constants:
         'sam-json-processor': 600,      # 10 minutes
         'sam-sqs-generate-match-reports': 300,  # 5 minutes
         'sam-produce-user-report': 180,  # 3 minutes
+        'sam-email-notification': 60,   # 1 minute
         'sam-merge-and-archive-result-logs': 300,  # 5 minutes
         'sam-produce-web-reports': 300   # 5 minutes
     }
@@ -197,6 +198,7 @@ class Constants:
         'sam-json-processor': 2048,
         'sam-sqs-generate-match-reports': 2048,
         'sam-produce-user-report': 1024,
+        'sam-email-notification': 256,
         'sam-merge-and-archive-result-logs': 128,
         'sam-produce-web-reports': 1024
     }

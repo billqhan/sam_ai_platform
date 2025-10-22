@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::m-sam-opportunity-responses/*",
+        "arn:aws:s3:::ktest-sam-opportunity-responses-dev/*",
+        "arn:aws:s3:::ktest-sam-subscribers/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ses:SendRawEmail"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

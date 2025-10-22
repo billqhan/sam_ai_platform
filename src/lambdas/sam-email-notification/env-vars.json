@@ -1,0 +1,10 @@
+{
+  "Variables": {
+    "FROM_EMAIL": "mga.aws2024@gmail.com",
+    "SUBSCRIBERS_BUCKET": "ktest-sam-subscribers", 
+    "SUBSCRIBERS_FILE": "subscribers.csv",
+    "SES_REGION": "us-east-1",
+    "EMAIL_SUBJECT_TEMPLATE": "AWS AI-Powered RFI/RFP Response for {solicitation_number}",
+    "EMAIL_BODY": "Dear Team, here is the latest match for your review."
+  }
+}

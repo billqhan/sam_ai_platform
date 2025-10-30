@@ -99,3 +99,9 @@ Outputs:
     Value: !GetAtt SamGovDailyDownloadFunction.Arn
     Export:
       Name: !Sub '${AWS::StackName}-SamProduceWebReportsFunction'
+  
+  SamDailyEmailNotificationFunctionArn:
+    Description: 'ARN of the daily email notification Lambda function'
+    Value: !GetAtt SamGovDailyDownloadFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SamDailyEmailNotificationFunction'

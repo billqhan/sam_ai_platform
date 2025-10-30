@@ -77,8 +77,8 @@ class ConfigManager:
             self._s3_config = S3Config(
                 sam_data_in=self._get_required_env('SAM_DATA_IN_BUCKET', 'sam-data-in'),
                 sam_extracted_json_resources=self._get_required_env('SAM_EXTRACTED_JSON_RESOURCES_BUCKET', 'sam-extracted-json-resources'),
-                sam_matching_out_sqs=self._get_required_env('SAM_MATCHING_OUT_SQS_BUCKET', 'sam-matching-out-sqs'),
-                sam_matching_out_runs=self._get_required_env('SAM_MATCHING_OUT_RUNS_BUCKET', 'sam-matching-out-runs'),
+                sam_matching_out_sqs=self._get_required_env('OUTPUT_BUCKET_SQS', self._get_required_env('SAM_MATCHING_OUT_SQS_BUCKET', 'sam-matching-out-sqs')),
+                sam_matching_out_runs=self._get_required_env('OUTPUT_BUCKET_RUNS', self._get_required_env('SAM_MATCHING_OUT_RUNS_BUCKET', 'sam-matching-out-runs')),
                 sam_opportunity_responses=self._get_required_env('SAM_OPPORTUNITY_RESPONSES_BUCKET', 'sam-opportunity-responses'),
                 sam_website=self._get_required_env('SAM_WEBSITE_BUCKET', 'sam-website'),
                 sam_company_info=self._get_required_env('SAM_COMPANY_INFO_BUCKET', 'sam-company-info'),

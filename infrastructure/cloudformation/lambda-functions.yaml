@@ -446,6 +446,10 @@ Resources:
             - HasBucketPrefix
             - !Sub '${BucketPrefix}-sam-extracted-json-resources-${Environment}'
             - !Sub 'sam-extracted-json-resources-${Environment}'
+          SAM_EXTRACTED_JSON_RESOURCES_BUCKET: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-extracted-json-resources-${Environment}'
+            - !Sub 'sam-extracted-json-resources-${Environment}'
           MAX_CONCURRENT_DOWNLOADS: '10'
           X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-json-processor'
 
@@ -515,6 +519,17 @@ Resources:
             - HasBucketPrefix
             - !Sub '${BucketPrefix}-sam-opportunity-responses-${Environment}'
             - !Sub 'sam-opportunity-responses-${Environment}'
+          SAM_OPPORTUNITY_RESPONSES_BUCKET: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-opportunity-responses-${Environment}'
+            - !Sub 'sam-opportunity-responses-${Environment}'
+          SAM_MATCHING_OUT_SQS_BUCKET: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-matching-out-sqs-${Environment}'
+            - !Sub 'sam-matching-out-sqs-${Environment}'
+          AGENT_ID: 'PLACEHOLDER'
+          AGENT_ALIAS_ID: 'PLACEHOLDER'
+          OUTPUT_FORMATS: 'txt,docx'
           COMPANY_NAME: !Ref CompanyName
           COMPANY_CONTACT: !Ref CompanyContact
           X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-produce-user-report'
@@ -572,6 +587,14 @@ Resources:
             - HasBucketPrefix
             - !Sub '${BucketPrefix}-sam-website-${Environment}'
             - !Sub 'sam-website-${Environment}'
+          SAM_WEBSITE_BUCKET: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-website-${Environment}'
+            - !Sub 'sam-website-${Environment}'
+          SAM_MATCHING_OUT_RUNS_BUCKET: !If 
+            - HasBucketPrefix
+            - !Sub '${BucketPrefix}-sam-matching-out-runs-${Environment}'
+            - !Sub 'sam-matching-out-runs-${Environment}'
           DASHBOARD_PATH: 'dashboards/'
           X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-produce-web-reports'
 

@@ -21,6 +21,10 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$CompanyContact,
     
+    # Optional: override Knowledge Base ID used by Lambda stack (default in master template is 'PLACEHOLDER')
+    [Parameter(Mandatory=$false)]
+    [string]$KnowledgeBaseId = "",
+    
     [Parameter(Mandatory=$false)]
     [string]$StackNamePrefix = "ai-rfp-response-agent",
     
@@ -46,13 +50,14 @@ PARAMETERS:
     -SamApiKey         SAM.gov API key (required)
     -CompanyName       Company name for reports (required)
     -CompanyContact    Company contact email (required)
+    -KnowledgeBaseId   Bedrock Knowledge Base ID (optional, set to '' to disable KB)
     -StackNamePrefix   Custom stack name prefix [default: ai-rfp-response-agent]
     -BucketPrefix      Prefix for S3 bucket names to avoid conflicts [optional]
     -Help              Show this help message
 
 EXAMPLES:
     .\deploy.ps1 -TemplatesBucket "my-templates-bucket" -SamApiKey "your-api-key" -CompanyName "My Company" -CompanyContact "contact@company.com"
-    .\deploy.ps1 -Environment "prod" -TemplatesBucket "prod-templates" -SamApiKey "key" -CompanyName "Company" -CompanyContact "email@company.com" -BucketPrefix "mycompany"
+    .\deploy.ps1 -Environment "prod" -TemplatesBucket "prod-templates" -SamApiKey "key" -CompanyName "Company" -CompanyContact "email@company.com" -BucketPrefix "mycompany" -KnowledgeBaseId "KB123456"
 
 "@
     exit 0
@@ -93,6 +98,7 @@ Write-Host "  Stack Name: $StackName"
 Write-Host "  Templates Bucket: $TemplatesBucket"
 Write-Host "  Company Name: $CompanyName"
 Write-Host "  Company Contact: $CompanyContact"
+Write-Host "  Knowledge Base ID: $KnowledgeBaseId"
 Write-Host "  Bucket Prefix: $BucketPrefix"
 Write-Host ""
 
@@ -171,6 +177,10 @@ $Parameters = @(
     @{
         ParameterKey = "BucketPrefix"
         ParameterValue = $BucketPrefix
+    },
+    @{
+        ParameterKey = "KnowledgeBaseId"
+        ParameterValue = $KnowledgeBaseId
     }
 )
 

@@ -36,6 +36,11 @@ Parameters:
     Type: String
     Default: ''
     Description: 'Optional prefix for S3 bucket names to avoid conflicts'
+  
+  KnowledgeBaseId:
+    Type: String
+    Default: 'PLACEHOLDER'
+    Description: 'ID of the Bedrock Knowledge Base for company information (use PLACEHOLDER for initial deployment)'
 
 Resources:
   # Main Infrastructure Stack (S3 Buckets, SQS)
@@ -60,7 +65,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     DependsOn: MainInfrastructureStack
     Properties:
-      TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}lambda-functions-simple.yaml'
+      TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}lambda-functions.yaml'
       Parameters:
         Environment: !Ref Environment
         SamApiKey: !Ref SamApiKey
@@ -68,6 +73,7 @@ Resources:
         CompanyContact: !Ref CompanyContact
         SqsSamJsonMessagesQueueArn: !GetAtt MainInfrastructureStack.Outputs.SqsSamJsonMessagesQueueArn
         BucketPrefix: !Ref BucketPrefix
+        KnowledgeBaseId: !Ref KnowledgeBaseId
       Tags:
         - Key: Environment
           Value: !Ref Environment

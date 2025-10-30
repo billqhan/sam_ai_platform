@@ -21,82 +21,85 @@ Conditions:
 
 Resources:
   # S3 Bucket Notification Configurations
-  SamDataInBucketNotification:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !If 
-        - HasBucketPrefix
-        - !Sub '${BucketPrefix}-sam-data-in-${Environment}'
-        - !Sub 'sam-data-in-${Environment}'
-      NotificationConfiguration:
-        LambdaConfigurations:
-          - Event: s3:ObjectCreated:*
-            Function: !If 
-              - HasBucketPrefix
-              - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${BucketPrefix}-sam-json-processor-${Environment}'
-              - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-json-processor-${Environment}'
+  # Note: These are commented out for simplified deployment because:
+  # 1. The buckets already exist (created in main-template.yaml)
+  # 2. The Lambda functions don't exist yet (using simplified template)
+  # 3. S3 notifications on existing buckets require custom Lambda resources
+  # Uncomment and modify when switching to full lambda-functions.yaml template
+  
+  # SamDataInBucketNotification:
+  #   Type: AWS::S3::Bucket
+  #   Properties:
+  #     BucketName: !If 
+  #       - HasBucketPrefix
+  #       - !Sub '${BucketPrefix}-sam-data-in-${Environment}'
+  #       - !Sub 'sam-data-in-${Environment}'
+  #     NotificationConfiguration:
+  #       LambdaConfigurations:
+  #         - Event: s3:ObjectCreated:*
+  #           Function: !If 
+  #             - HasBucketPrefix
+  #             - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${BucketPrefix}-sam-json-processor-${Environment}'
+  #             - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-json-processor-${Environment}'
 
-  SamExtractedJsonResourcesBucketNotification:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !If 
-        - HasBucketPrefix
-        - !Sub '${BucketPrefix}-sam-extracted-json-resources-${Environment}'
-        - !Sub 'sam-extracted-json-resources-${Environment}'
-      NotificationConfiguration:
-        QueueConfigurations:
-          - Event: s3:ObjectCreated:*
-            Queue: !Ref SqsSamJsonMessagesQueueArn
+  # SamExtractedJsonResourcesBucketNotification:
+  #   Type: AWS::S3::Bucket
+  #   Properties:
+  #     BucketName: !If 
+  #       - HasBucketPrefix
+  #       - !Sub '${BucketPrefix}-sam-extracted-json-resources-${Environment}'
+  #       - !Sub 'sam-extracted-json-resources-${Environment}'
+  #     NotificationConfiguration:
+  #       QueueConfigurations:
+  #         - Event: s3:ObjectCreated:*
+  #           Queue: !Ref SqsSamJsonMessagesQueueArn
 
-  SamMatchingOutSqsBucketNotification:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !If 
-        - HasBucketPrefix
-        - !Sub '${BucketPrefix}-sam-matching-out-sqs-${Environment}'
-        - !Sub 'sam-matching-out-sqs-${Environment}'
-      NotificationConfiguration:
-        LambdaConfigurations:
-          - Event: s3:ObjectCreated:*
-            Filter:
-              S3Key:
-                Rules:
-                  - Name: suffix
-                    Value: '.json'
-            Function: !If 
-              - HasBucketPrefix
-              - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${BucketPrefix}-sam-produce-user-report-${Environment}'
-              - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-produce-user-report-${Environment}'
+  # SamMatchingOutSqsBucketNotification:
+  #   Type: AWS::S3::Bucket
+  #   Properties:
+  #     BucketName: !If 
+  #       - HasBucketPrefix
+  #       - !Sub '${BucketPrefix}-sam-matching-out-sqs-${Environment}'
+  #       - !Sub 'sam-matching-out-sqs-${Environment}'
+  #     NotificationConfiguration:
+  #       LambdaConfigurations:
+  #         - Event: s3:ObjectCreated:*
+  #           Filter:
+  #             S3Key:
+  #               Rules:
+  #                 - Name: suffix
+  #                   Value: '.json'
+  #           Function: !If 
+  #             - HasBucketPrefix
+  #             - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${BucketPrefix}-sam-produce-user-report-${Environment}'
+  #             - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-produce-user-report-${Environment}'
 
-  SamMatchingOutRunsBucketNotification:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !If 
-        - HasBucketPrefix
-        - !Sub '${BucketPrefix}-sam-matching-out-runs-${Environment}'
-        - !Sub 'sam-matching-out-runs-${Environment}'
-      NotificationConfiguration:
-        LambdaConfigurations:
-          - Event: s3:ObjectCreated:*
-            Filter:
-              S3Key:
-                Rules:
-                  - Name: prefix
-                    Value: 'runs/2'
-            Function: !If 
-              - HasBucketPrefix
-              - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${BucketPrefix}-sam-produce-web-reports-${Environment}'
-              - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-produce-web-reports-${Environment}'
+  # SamMatchingOutRunsBucketNotification:
+  #   Type: AWS::S3::Bucket
+  #   Properties:
+  #     BucketName: !If 
+  #       - HasBucketPrefix
+  #       - !Sub '${BucketPrefix}-sam-matching-out-runs-${Environment}'
+  #       - !Sub 'sam-matching-out-runs-${Environment}'
+  #     NotificationConfiguration:
+  #       LambdaConfigurations:
+  #         - Event: s3:ObjectCreated:*
+  #           Filter:
+  #             S3Key:
+  #               Rules:
+  #                 - Name: prefix
+  #                   Value: 'runs/2'
+  #           Function: !If 
+  #             - HasBucketPrefix
+  #             - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${BucketPrefix}-sam-produce-web-reports-${Environment}'
+  #             - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sam-produce-web-reports-${Environment}'
+  
+  # Placeholder resource to avoid empty Resources section
+  DummyWaitConditionHandle:
+    Type: AWS::CloudFormation::WaitConditionHandle
 
 Outputs:
-  SamDataInBucketNotificationId:
-    Description: 'ID of the SAM data in bucket notification configuration'
-    Value: !Ref SamDataInBucketNotification
-    Export:
-      Name: !Sub '${AWS::StackName}-SamDataInBucketNotification'
-  
-  SamExtractedJsonResourcesBucketNotificationId:
-    Description: 'ID of the extracted JSON resources bucket notification configuration'
-    Value: !Ref SamExtractedJsonResourcesBucketNotification
-    Export:
-      Name: !Sub '${AWS::StackName}-SamExtractedJsonResourcesBucketNotification'
+  # Placeholder outputs
+  DummyOutput:
+    Description: 'Placeholder output for simplified deployment'
+    Value: !Ref DummyWaitConditionHandle

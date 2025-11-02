@@ -64,6 +64,45 @@ class OpportunityProcessor:
             'errors': errors
         }
     
+    def process_all_sam_files(self) -> Dict[str, Any]:
+        """Process all SAM JSON files in the source bucket for manual triggers."""
+        logger.info("Processing all SAM files in source bucket")
+        
+        processed_files = []
+        errors = []
+        
+        try:
+            # List all objects in the source bucket (SAM opportunities bucket)
+            source_bucket = config.s3.sam_opportunities
+            
+            paginator = self.s3_client.get_paginator('list_objects_v2')
+            page_iterator = paginator.paginate(Bucket=source_bucket)
+            
+            for page in page_iterator:
+                for obj in page.get('Contents', []):
+                    object_key = obj['Key']
+                    
+                    # Only process JSON files that match SAM pattern
+                    if object_key.endswith('.json') and 'SAM_Opportunities' in object_key:
+                        try:
+                            logger.info("Processing SAM file", key=object_key)
+                            result = self._process_sam_json_file(source_bucket, object_key)
+                            processed_files.append(result)
+                        except Exception as e:
+                            error_msg = f"Error processing file {object_key}: {str(e)}"
+                            logger.error(error_msg, key=object_key, error=str(e))
+                            errors.append(error_msg)
+            
+            return {
+                'processed_files': len(processed_files),
+                'total_opportunities': sum(r['opportunities_processed'] for r in processed_files),
+                'errors': errors
+            }
+            
+        except Exception as e:
+            logger.error("Error scanning source bucket", error=str(e))
+            raise
+    
     def _process_sam_json_file(self, bucket_name: str, object_key: str) -> Dict[str, Any]:
         """Download and process a single SAM JSON file."""
         logger.info("Downloading SAM JSON file", bucket=bucket_name, key=object_key)
@@ -273,7 +312,7 @@ def lambda_handler(event, context):
     Lambda handler for SAM JSON processing.
     
     Args:
-        event: S3 PUT event
+        event: S3 PUT event or manual trigger event
         context: Lambda context object
         
     Returns:
@@ -283,7 +322,15 @@ def lambda_handler(event, context):
     
     try:
         processor = OpportunityProcessor()
-        result = processor.process_s3_event(event)
+        
+        # Check if this is a manual trigger or S3 event
+        if event.get('trigger') == 'manual' or event.get('action') == 'process_all_files':
+            # Manual trigger - process all available SAM files
+            logger.info("Processing manual trigger - scanning for all SAM files")
+            result = processor.process_all_sam_files()
+        else:
+            # S3 event trigger - process specific files
+            result = processor.process_s3_event(event)
         
         logger.info("SAM JSON processing completed successfully", result=result)
         

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -42,6 +42,9 @@ export const workflowApi = {
   triggerReports: () => api.post('/workflow/reports'),
   triggerNotification: () => api.post('/workflow/notify'),
   
+  // Generate automatic workflow report
+  generateAutoReport: (data) => api.post('/workflow/auto-report', data),
+  
   // Get workflow status
   getStatus: () => api.get('/workflow/status'),
   getHistory: (limit = 10) => api.get(`/workflow/history?limit=${limit}`),
@@ -66,6 +69,7 @@ export const matchesApi = {
   getByOpportunity: (opportunityId) => api.get(`/matches/opportunity/${opportunityId}`),
   
   // Match operations
+  triggerMatching: () => api.post('/matches/trigger'),
   rerunMatch: (opportunityId) => api.post(`/matches/rerun/${opportunityId}`),
   updateScore: (matchId, score) => api.patch(`/matches/${matchId}/score`, { score }),
   addNote: (matchId, note) => api.post(`/matches/${matchId}/notes`, { note }),

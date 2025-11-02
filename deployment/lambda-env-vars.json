@@ -1,0 +1,13 @@
+{
+  "Variables": {
+    "SAM_API_KEY": "SAM-95a93ccd-9d79-41be-a0a5-0e01ef13a75a",
+    "SAM_API_URL": "https://api.sam.gov/prod/opportunities/v2/search",
+    "OVERRIDE_DATE_FORMAT": "MM/DD/YYYY",
+    "API_LIMIT": "1000",
+    "OVERRIDE_POSTED_FROM": "",
+    "LOG_BUCKET": "l3harris-qhan-sam-download-files-logs-dev",
+    "OUTPUT_BUCKET": "l3harris-qhan-sam-data-in-dev",
+    "X_AMZN_TRACE_ID": "ai-rfp-response-agent-dev-LambdaFunctionsStack-HXB3E9R3R6IY-sam-gov-daily-download",
+    "OVERRIDE_POSTED_TO": ""
+  }
+}

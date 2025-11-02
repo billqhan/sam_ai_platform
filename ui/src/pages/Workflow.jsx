@@ -40,7 +40,7 @@ const WORKFLOW_STEPS = [
   {
     id: 'reports',
     name: 'Generate Reports',
-    description: 'Create web dashboards and user reports',
+    description: 'Create daily summary reports with opportunity analysis and match results',
     icon: FileText,
     action: 'triggerReports',
   },
@@ -183,8 +183,17 @@ export default function Workflow() {
 
   const executeMutation = useMutation({
     mutationFn: async ({ step, params }) => {
+      // Execute the workflow step
       const apiMethod = workflowApi[step.action]
-      return apiMethod(params)
+      const result = await apiMethod(params)
+      
+      // Wait a moment for processing to complete
+      await new Promise(resolve => setTimeout(resolve, 5000))
+      
+      // Only generate business reports for the reports step
+      // No individual step execution reports
+      
+      return result
     },
     onMutate: ({ step }) => {
       setStepStatuses(prev => ({ ...prev, [step.id]: 'running' }))
@@ -192,10 +201,14 @@ export default function Workflow() {
     onSuccess: (data, { step }) => {
       setStepStatuses(prev => ({ ...prev, [step.id]: 'success' }))
       queryClient.invalidateQueries({ queryKey: ['workflow-history'] })
+      // Refresh reports to show new auto-generated report
+      queryClient.invalidateQueries({ queryKey: ['reports'] })
     },
     onError: (error, { step }) => {
       setStepStatuses(prev => ({ ...prev, [step.id]: 'error' }))
-      console.error(`Error executing ${step.name}:`, error)
+      queryClient.invalidateQueries({ queryKey: ['workflow-history'] })
+      
+      // No error reports generated - only business reports from reports step
     },
   })
 

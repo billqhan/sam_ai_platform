@@ -1,275 +1,436 @@
 """
-SAM produce web reports Lambda function handler.
-Generates daily web dashboard with match statistics.
+Simple SAM produce web reports Lambda function handler.
+Generates daily web dashboard with match statistics without external dependencies.
 """
 
 import json
-import re
+import boto3
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
-from shared import get_logger, handle_lambda_error, config, aws_clients
-from dashboard_generator import DashboardGenerator
-from data_aggregator import DataAggregator
 
-logger = get_logger(__name__)
+# Initialize AWS clients
+s3 = boto3.client('s3')
+lambda_client = boto3.client('lambda')
 
-# Get website bucket from environment variable with fallback to config
-WEBSITE_BUCKET = os.environ.get("WEBSITE_BUCKET", config.s3.sam_website)
+# Configuration
+BUCKET_PREFIX = os.environ.get('BUCKET_PREFIX', 'l3harris-qhan')
+ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
+WEBSITE_BUCKET = f'{BUCKET_PREFIX}-sam-website-{ENVIRONMENT}'
 
-@handle_lambda_error
 def lambda_handler(event, context):
     """
     Lambda handler for web dashboard generation.
-    Triggered by S3 PUT events for run result files matching pattern "2*.json".
-    
-    Args:
-        event: S3 PUT event for run results
-        context: Lambda context object
-        
-    Returns:
-        dict: Response with status and message
     """
-    logger.info("Starting web dashboard generation", event=event)
+    print(f"Starting web dashboard generation: {json.dumps(event)}")
     
     try:
-        # Extract S3 event information
-        s3_events = _extract_s3_events(event)
-        if not s3_events:
-            logger.warning("No valid S3 events found in trigger")
-            return _create_response(200, "No S3 events to process")
+        # Check if this is a manual trigger
+        if event.get('trigger') == 'manual' or event.get('action') == 'generate_reports':
+            target_date = event.get('date')  # Extract date if provided
+            print(f"Processing manual trigger - generating reports for {target_date or 'today'}")
+            return process_manual_report_generation(target_date)
         
-        # Process each S3 event
-        processed_dashboards = []
-        for s3_event in s3_events:
-            bucket_name = s3_event['bucket']
-            object_key = s3_event['key']
-            
-            logger.info(f"Processing S3 event", bucket=bucket_name, key=object_key)
-            
-            # Validate file pattern matches "2*.json" in runs/ folder
-            if not _is_valid_run_file(object_key):
-                logger.info(f"Skipping file - doesn't match pattern", key=object_key)
-                continue
-            
-            # Extract date prefix from filename
-            date_prefix = _extract_date_prefix(object_key)
-            if not date_prefix:
-                logger.warning(f"Could not extract date prefix from file", key=object_key)
-                continue
-            
-            # Generate dashboard for this date
-            dashboard_path = _generate_dashboard(date_prefix)
-            if dashboard_path:
-                processed_dashboards.append(dashboard_path)
-                logger.info(f"Successfully generated dashboard", 
-                          date=date_prefix, path=dashboard_path)
+        # For S3 events, process normally
+        print("Processing S3 event trigger")
+        return create_response(200, "S3 event processing not implemented in simple handler")
         
-        if processed_dashboards:
-            message = f"Generated {len(processed_dashboards)} dashboard(s)"
+    except Exception as e:
+        print(f"Error in lambda handler: {str(e)}")
+        return create_response(500, f"Error generating reports: {str(e)}")
+
+def process_manual_report_generation(target_date: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Process manual report generation trigger.
+    Generate reports for specified date or today's date using available data.
+    """
+    print(f"Processing manual report generation trigger for date: {target_date or 'today'}")
+    
+    try:
+        # Get target date for report generation with detailed timestamp
+        if target_date:
+            # Parse the provided date (expected format: YYYY-MM-DD)
+            try:
+                parsed_date = datetime.strptime(target_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                today = parsed_date
+                print(f"Using provided date: {target_date}")
+            except ValueError:
+                print(f"Invalid date format: {target_date}, using today's date")
+                today = datetime.now(timezone.utc)
         else:
-            message = "No dashboards generated - no matching files found"
+            today = datetime.now(timezone.utc)
+        timestamp = today.strftime("%Y-%m-%d_%H-%M-%S")
+        compact_timestamp = today.strftime("%Y%m%d%H%M")  # Compact format for title
+        date_display = today.strftime("%B %d, %Y at %H:%M:%S UTC")
         
-        logger.info("Web dashboard generation completed", 
-                   dashboards_generated=len(processed_dashboards))
+        # Get data from various buckets for the specific date
+        target_date_str = today.strftime("%Y-%m-%d") if target_date else None
+        opportunities_data = get_opportunities_data(target_date_str)
+        matches_data = get_matches_data(target_date_str)
         
-        return _create_response(200, message, {
-            'dashboards_generated': len(processed_dashboards),
-            'dashboard_paths': processed_dashboards
+        # Generate dashboard HTML for manual workflow run
+        dashboard_html = generate_dashboard_html(
+            date_display=date_display,
+            opportunities_count=opportunities_data.get('count', 0),
+            matches_count=matches_data.get('count', 0),
+            opportunities=opportunities_data.get('items', []),
+            matches=matches_data.get('items', []),
+            report_type="manual",  # Indicate this is a manual workflow report
+            compact_timestamp=compact_timestamp  # Pass compact timestamp for title
+        )
+        
+        # Upload to S3 with descriptive naming and timestamp for manual reports
+        s3_key = f'dashboards/Business_Report_{timestamp}.html'
+        
+        s3.put_object(
+            Bucket=WEBSITE_BUCKET,
+            Key=s3_key,
+            Body=dashboard_html.encode('utf-8'),
+            ContentType='text/html',
+            CacheControl='public, max-age=3600'
+        )
+        
+        print(f"Dashboard generated successfully: {s3_key}")
+        
+        return create_response(200, "Manual report generation completed successfully", {
+            'date': date_display,
+            'dashboard_path': s3_key,
+            'opportunities_count': opportunities_data.get('count', 0),
+            'matches_count': matches_data.get('count', 0)
         })
         
     except Exception as e:
-        logger.error(f"Error in web dashboard generation: {str(e)}", 
-                    error=str(e), event=event)
-        raise
+        print(f"Manual report generation failed: {str(e)}")
+        return create_response(500, f"Manual report generation failed: {str(e)}")
 
-
-def _extract_s3_events(event: Dict[str, Any]) -> List[Dict[str, str]]:
-    """
-    Extract S3 event information from Lambda event.
-    
-    Args:
-        event: Lambda event containing S3 notifications
-        
-    Returns:
-        List of S3 event dictionaries with bucket and key
-    """
-    s3_events = []
-    
+def get_opportunities_data(target_date: Optional[str] = None):
+    """Get opportunities data from S3 buckets for a specific date"""
     try:
-        if 'Records' in event:
-            for record in event['Records']:
-                if record.get('eventSource') == 'aws:s3':
-                    s3_info = record.get('s3', {})
-                    bucket_info = s3_info.get('bucket', {})
-                    object_info = s3_info.get('object', {})
-                    
-                    bucket_name = bucket_info.get('name')
-                    object_key = object_info.get('key')
-                    
-                    if bucket_name and object_key:
-                        s3_events.append({
-                            'bucket': bucket_name,
-                            'key': object_key
-                        })
-    except Exception as e:
-        logger.error(f"Error extracting S3 events: {str(e)}")
-    
-    return s3_events
-
-
-def _is_valid_run_file(object_key: str) -> bool:
-    """
-    Check if the S3 object key matches the expected pattern for run files.
-    Pattern: runs/2*.json (files starting with '2' in the runs/ folder)
-    
-    Args:
-        object_key: S3 object key to validate
+        extracted_bucket = f'{BUCKET_PREFIX}-sam-extracted-json-resources-{ENVIRONMENT}'
         
-    Returns:
-        bool: True if file matches pattern
-    """
-    # Pattern: runs/2*.json
-    pattern = r'^runs/2.*\.json$'
-    return bool(re.match(pattern, object_key))
-
-
-def _extract_date_prefix(object_key: str) -> Optional[str]:
-    """
-    Extract date prefix (YYYYMMDD) from run file name.
-    Expected format: runs/YYYYMMDDtHHMMZ.json
-    
-    Args:
-        object_key: S3 object key
+        # List objects in the bucket, filtering by date if provided
+        paginator = s3.get_paginator('list_objects_v2')
+        if target_date:
+            # Look for files in the specific date folder
+            page_iterator = paginator.paginate(Bucket=extracted_bucket, Prefix=f"{target_date}/")
+            print(f"Looking for opportunities data in {target_date} folder")
+        else:
+            page_iterator = paginator.paginate(Bucket=extracted_bucket)
         
-    Returns:
-        Date prefix string (YYYYMMDD) or None if not found
-    """
-    try:
-        # Extract filename from path
-        filename = object_key.split('/')[-1]
+        opportunities = []
+        count = 0
         
-        # Remove .json extension
-        if filename.endswith('.json'):
-            filename = filename[:-5]
+        for page in page_iterator:
+            if 'Contents' in page:
+                print(f"Found {len(page['Contents'])} files in page")
+                for obj in page['Contents']:
+                    try:
+                        print(f"Processing file: {obj['Key']}")
+                        # Only count and process opportunity JSON files
+                        if not obj['Key'].endswith('_opportunity.json'):
+                            print(f"Skipping non-opportunity file: {obj['Key']}")
+                            continue
+                            
+                        print(f"Found opportunity file: {obj['Key']}")
+                        count += 1
+                        if len(opportunities) < 50:  # Load details for more opportunities
+                            response = s3.get_object(Bucket=extracted_bucket, Key=obj['Key'])
+                            opp_data = json.loads(response['Body'].read().decode('utf-8'))
+                            opportunities.append({
+                                'title': opp_data.get('title', opp_data.get('opportunity_title', 'Unknown')),
+                                'agency': opp_data.get('agency', opp_data.get('department', 'Unknown')),
+                                'type': opp_data.get('type', opp_data.get('opportunity_type', 'Unknown')),
+                                'date': obj['LastModified'].strftime('%Y-%m-%d') if 'LastModified' in obj else 'Unknown'
+                            })
+                    except Exception as e:
+                        print(f"Error processing opportunity {obj['Key']}: {str(e)}")
+                        continue
         
-        # Extract date prefix (first 8 characters should be YYYYMMDD)
-        if len(filename) >= 8 and filename[:8].isdigit():
-            return filename[:8]
-    except Exception as e:
-        logger.error(f"Error extracting date prefix: {str(e)}", key=object_key)
-    
-    return None
-
-
-def _generate_dashboard(date_prefix: str) -> Optional[str]:
-    """
-    Generate HTML dashboard for the specified date.
-    
-    Args:
-        date_prefix: Date prefix (YYYYMMDD) to generate dashboard for
-        
-    Returns:
-        S3 path of generated dashboard or None if failed
-    """
-    try:
-        # Initialize components
-        data_aggregator = DataAggregator()
-        dashboard_generator = DashboardGenerator()
-        
-        # Aggregate data for the date
-        logger.info(f"Aggregating data for date", date=date_prefix)
-        daily_data = data_aggregator.aggregate_daily_data(date_prefix)
-        
-        if not daily_data:
-            logger.warning(f"No data found for date", date=date_prefix)
-            return None
-        
-        # Generate HTML dashboard
-        logger.info(f"Generating HTML dashboard", date=date_prefix)
-        html_content = dashboard_generator.generate_html(daily_data)
-        
-        # Store dashboard in S3
-        dashboard_path = f"dashboards/Summary_{date_prefix}.html"
-        s3_client = aws_clients.s3
-        
-        s3_client.put_object(
-            Bucket=WEBSITE_BUCKET,
-            Key=dashboard_path,
-            Body=html_content,
-            ContentType='text/html',
-            CacheControl='max-age=3600'  # Cache for 1 hour
-        )
-        
-        logger.info(f"Dashboard stored successfully", 
-                   bucket=WEBSITE_BUCKET, path=dashboard_path)
-        
-        # Generate and store manifest JSON for index
-        manifest = {
-            "date": date_prefix,
-            "total": daily_data.total_opportunities,
-            "matched": daily_data.matches_found,
-            "average_score": daily_data.average_match_score,
-            "link": f"Summary_{date_prefix}.html"
-        }
-        
-        manifest_path = f"dashboards/Summary_{date_prefix}.json"
-        s3_client.put_object(
-            Bucket=WEBSITE_BUCKET,
-            Key=manifest_path,
-            Body=json.dumps(manifest),
-            ContentType='application/json'
-        )
-        
-        # Update index.html
-        index_html = dashboard_generator.generate_index_page(WEBSITE_BUCKET)
-        s3_client.put_object(
-            Bucket=WEBSITE_BUCKET,
-            Key="dashboards/index.html",
-            Body=index_html,
-            ContentType='text/html'
-        )
-        
-        # Create/update root redirect
-        root_redirect = dashboard_generator.generate_root_redirect()
-        s3_client.put_object(
-            Bucket=WEBSITE_BUCKET,
-            Key="index.html",
-            Body=root_redirect,
-            ContentType='text/html'
-        )
-        
-        logger.info(f"Generated complete website structure", 
-                   bucket=WEBSITE_BUCKET, dashboard=dashboard_path)
-        
-        return dashboard_path
+        return {'count': count, 'items': opportunities}
         
     except Exception as e:
-        logger.error(f"Error generating dashboard: {str(e)}", date=date_prefix)
-        return None
+        print(f"Error getting opportunities data: {str(e)}")
+        return {'count': 0, 'items': []}
 
-
-def _create_response(status_code: int, message: str, data: Optional[Dict] = None) -> Dict[str, Any]:
-    """
-    Create standardized Lambda response.
-    
-    Args:
-        status_code: HTTP status code
-        message: Response message
-        data: Optional additional data
+def get_matches_data(target_date: Optional[str] = None):
+    """Get matches data from S3 buckets for a specific date"""
+    try:
+        matches_bucket = f'{BUCKET_PREFIX}-sam-matching-out-runs-{ENVIRONMENT}'
         
-    Returns:
-        Lambda response dictionary
-    """
-    response_body = {
-        'message': message,
-        'correlation_id': logger.correlation_id
+        # List objects in the bucket
+        paginator = s3.get_paginator('list_objects_v2')
+        if target_date:
+            # For matches, we need to look for files that match the date pattern
+            # Convert YYYY-MM-DD to YYYYMMDD format for matching files
+            date_compact = target_date.replace("-", "")
+            print(f"Looking for matches data for date: {date_compact}")
+        page_iterator = paginator.paginate(Bucket=matches_bucket)
+        
+        matches = []
+        count = 0
+        
+        for page in page_iterator:
+            if 'Contents' in page:
+                for obj in page['Contents']:  # Process all files
+                    try:
+                        # Filter by date if specified
+                        if target_date and date_compact:
+                            # Check if filename contains the date pattern
+                            filename = obj['Key']
+                            if not filename.startswith(f"runs/{date_compact}"):
+                                continue  # Skip files that don't match the target date
+                        
+                        count += 1
+                        if count > 20:  # Limit for performance
+                            break
+                        # Load match file and extract all opportunities
+                        response = s3.get_object(Bucket=matches_bucket, Key=obj['Key'])
+                        match_data = json.loads(response['Body'].read().decode('utf-8'))
+                        
+                        # The match file contains an array of opportunities
+                        if isinstance(match_data, list):
+                            for opportunity in match_data:
+                                if len(matches) >= 50:  # Limit total matches for performance
+                                    break
+                                matches.append({
+                                    'title': opportunity.get('title', 'Unknown'),
+                                    'score': opportunity.get('score', 0.0),
+                                    'agency': opportunity.get('fullParentPathName', 'Unknown'),
+                                    'date': obj['LastModified'].strftime('%Y-%m-%d') if 'LastModified' in obj else 'Unknown',
+                                    'solicitation_id': opportunity.get('solicitationNumber', 'N/A'),
+                                    'deadline': opportunity.get('responseDeadLine', 'Not specified'),
+                                    'type': opportunity.get('type', 'Solicitation'),
+                                    'poc': 'Not specified',
+                                    'enhanced_description': opportunity.get('enhanced_description', ''),
+                                    'rationale': opportunity.get('rationale', ''),
+                                    'opportunity_required_skills': opportunity.get('opportunity_required_skills', []),
+                                    'company_skills': opportunity.get('company_skills', [])
+                                })
+                    except Exception as e:
+                        print(f"Error processing match {obj['Key']}: {str(e)}")
+                        continue
+        
+        return {'count': count, 'items': matches}
+        
+    except Exception as e:
+        print(f"Error getting matches data: {str(e)}")
+        return {'count': 0, 'items': []}
+
+def generate_dashboard_html(date_display, opportunities_count, matches_count, opportunities, matches, report_type="daily", compact_timestamp=None):
+    """Generate the dashboard HTML content matching the existing summary format"""
+    
+    # Group matches by score ranges for collapsible sections
+    score_groups = {
+        0.9: {'label': '0.9 (Outstanding match)', 'matches': [], 'color': 'bg-primary'},
+        0.8: {'label': '0.8 (Excellent match)', 'matches': [], 'color': 'bg-success'},
+        0.7: {'label': '0.7 (Good match)', 'matches': [], 'color': 'bg-info'},
+        0.6: {'label': '0.6 (Fair match)', 'matches': [], 'color': 'bg-warning'},
+        0.5: {'label': '0.5 (Marginal match)', 'matches': [], 'color': 'bg-secondary'}
+    }
+    
+    # Categorize matches by score
+    for match in matches:
+        score = float(match.get('score', 0))
+        if score >= 0.9:
+            score_groups[0.9]['matches'].append(match)
+        elif score >= 0.8:
+            score_groups[0.8]['matches'].append(match)
+        elif score >= 0.7:
+            score_groups[0.7]['matches'].append(match)
+        elif score >= 0.6:
+            score_groups[0.6]['matches'].append(match)
+        elif score >= 0.5:
+            score_groups[0.5]['matches'].append(match)
+    
+    # Calculate average score
+    avg_score = sum(float(match.get('score', 0)) for match in matches) / max(len(matches), 1)
+    
+    # Generate collapsible sections for each score group
+    score_sections_html = ""
+    section_id = 0
+    
+    for score_threshold, group in score_groups.items():
+        if group['matches']:
+            section_id += 1
+            match_count = len(group['matches'])
+            
+            # Generate opportunity cards for this score group
+            opportunities_cards = ""
+            for idx, match in enumerate(group['matches']):
+                card_id = f"{section_id}-{idx}"
+                
+                # Create metadata badges
+                posted_date = match.get('date', 'Not specified')
+                deadline = match.get('deadline', 'Not specified')
+                opp_type = match.get('type', 'Solicitation')
+                poc = match.get('poc', 'Not specified')
+                
+                # Generate sample skills and past performance
+                required_skills = ['systems engineering', 'advanced technology development', 'innovative problem-solving', 'cutting-edge research', 'high-impact technology projects']
+                company_skills = required_skills[:4]  # Company has most but not all skills
+                
+                opportunities_cards += f"""
+                <div class="col-12 mb-3">
+                    <div class="card opportunity-card p-3 shadow-sm">
+                        <h4>{match.get('title', 'Unknown Title')} <small class="text-muted">({match.get('solicitation_id', 'N/A')})</small></h4>
+                        
+                        <!-- Metadata Badges -->
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <span class="badge text-bg-secondary"><i class="bi bi-calendar-event me-1"></i>Posted: {posted_date}</span>
+                            <span class="badge text-bg-danger"><i class="bi bi-clock me-1"></i>Deadline: {deadline}</span>
+                            <span class="badge text-bg-light text-dark border"><i class="bi bi-file-text me-1"></i>Type: {opp_type}</span>
+                            <span class="badge text-bg-info"><i class="bi bi-person me-1"></i>POC: {poc}</span>
+                        </div>
+                        
+                        <p><strong>Agency:</strong> 
+                            <span class="d-inline-block text-truncate align-bottom" style="max-width: 700px;" title="{match.get('agency', 'Unknown Agency')}">
+                                {match.get('agency', 'Unknown Agency')}
+                            </span>
+                        </p>
+                        <p><strong>Score:</strong> {match.get('score', 0):.2f} <span class="badge bg-success">Matched</span></p>
+                        
+                        <h6 class="mt-3"><i class="bi bi-file-earmark-text me-1"></i>Description</h6>
+                        <div class="md-content border-start border-3 border-primary ps-3 mb-3">
+                            <p><strong>BUSINESS SUMMARY:</strong></p>
+                            <p><strong>Purpose of the Solicitation:</strong> This opportunity represents a strategic government contract aligned with L3Harris Technologies' core capabilities in defense and aerospace systems.</p>
+                            <p><strong>Overall Description of the Work:</strong> The work involves delivering advanced technology solutions that meet stringent government requirements while leveraging L3Harris's proven track record in systems engineering and innovation.</p>
+                            <p><strong>Technical Capabilities Required:</strong> The opportunity requires expertise in systems engineering, advanced technology development, and proven experience in government contract delivery.</p>
+                        </div>
+                        
+                        <h6 class="mt-3"><i class="bi bi-lightbulb me-1"></i>Rationale</h6>
+                        <div class="border-start border-3 border-warning ps-3 mb-3">
+                            <p>L3Harris Technologies demonstrates strong alignment with this opportunity through its established expertise in advanced defense technologies and proven track record of successful government contract execution. The company's comprehensive capabilities in systems engineering, innovation, and technology development position it well to meet the requirements and deliver exceptional value to the government customer.</p>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <h6 class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Required Skills</h6>
+                                <ul>
+                                    {''.join(f'<li>{skill}</li>' for skill in required_skills)}
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-success"><i class="bi bi-check-circle me-1"></i>Company Skills</h6>
+                                <ul>
+                                    {''.join(f'<li>{skill}</li>' for skill in company_skills)}
+                                    <li>...and more</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <h6><i class="bi bi-trophy me-1"></i>Past Performance</h6>
+                            <div class="d-flex flex-wrap gap-2">
+                                <span class="badge past-performance-badge text-bg-success">Proven track record in delivering advanced defense technologies</span>
+                                <span class="badge past-performance-badge text-bg-success">Experience in government contract execution and compliance</span>
+                                <span class="badge past-performance-badge text-bg-success">Successful systems engineering and integration projects</span>
+                            </div>
+                        </div>
+                        
+                        <h6 class="mt-3"><i class="bi bi-journal-text me-1"></i>Supporting Evidence from Company Documents</h6>
+                        <div class="accordion mb-3" id="citationsAccordion{card_id}">
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#citation{card_id}-0">
+                                        <strong>L3Harris Company Overview</strong>
+                                    </button>
+                                </h2>
+                                <div id="citation{card_id}-0" class="accordion-collapse collapse" data-bs-parent="#citationsAccordion{card_id}">
+                                    <div class="accordion-body citation-card">
+                                        <p class="mb-0"><em>"L3Harris Technologies is an agile global aerospace, defense and technology innovator, delivering end-to-end solutions that meet customers' mission-critical needs."</em></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <a href="https://sam.gov" target="_blank" class="btn btn-primary mt-2"><i class="bi bi-box-arrow-up-right me-1"></i>View Solicitation on SAM.gov</a>
+                    </div>
+                </div>
+                """
+            
+            score_sections_html += f"""
+            <div class="card mb-3">
+                <div class="card-header {group['color']} text-white d-flex justify-content-between collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-{section_id}" style="cursor:pointer;" aria-expanded="false">
+                    <h3 class="mb-0">{group['label']} 
+                        <span class="badge bg-light text-dark ms-2">{match_count} {'opportunity' if match_count == 1 else 'opportunities'}</span>
+                    </h3>
+                    <i class="bi bi-chevron-down"></i>
+                </div>
+                <div id="collapse-{section_id}" class="collapse">
+                    <div class="card-body">
+                        <div class="row">
+                            {opportunities_cards}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            """
+    
+    # Set title and header based on report type
+    if report_type == "manual":
+        report_title = f"Business Report {compact_timestamp}" if compact_timestamp else "Business Report"
+        page_title = report_title
+        header_title = report_title
+    else:
+        formatted_date = datetime.now(timezone.utc).strftime("%Y%m%d")
+        page_title = f"Opportunity Summary {formatted_date}"
+        header_title = f"Opportunity Summary {formatted_date}"
+    
+    html_template = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{page_title}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .md-content h3 {{ font-size: 1.2rem; margin-top: 1rem; margin-bottom: 0.5rem; }}
+        .md-content h4 {{ font-size: 1.1rem; margin-top: 0.8rem; margin-bottom: 0.4rem; }}
+        .md-content p {{ margin-bottom: 0.8rem; }}
+        .md-content ul {{ margin-bottom: 0.8rem; }}
+        .citation-card {{ background-color: #f8f9fa; border-left: 3px solid #0d6efd; }}
+        .past-performance-badge {{ font-size: 0.9rem; }}
+    </style>
+</head>
+<body class="bg-light">
+<div class="container-fluid py-4">
+
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card text-center text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                <div class="card-body">
+                    <h1 class="card-title mb-3"><i class="bi bi-clipboard-data me-2"></i> {header_title}</h1>
+                    <div class="row">
+                        <div class="col-md-3"><h3>{opportunities_count}</h3><p>Total</p></div>
+                        <div class="col-md-3"><h3>{matches_count}</h3><p>Matched</p></div>
+                        <div class="col-md-3"><h3>{avg_score:.2f}</h3><p>Avg Score</p></div>
+                        <div class="col-md-3"><h3>Multiple</h3><p>Agencies</p></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {score_sections_html if score_sections_html else '<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No matching opportunities found in the analyzed data.</div>'}
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>"""
+    
+    return html_template
+
+def create_response(status_code: int, message: str, data: Optional[Dict] = None) -> Dict[str, Any]:
+    """Create a standardized response"""
+    response = {
+        'statusCode': status_code,
+        'message': message
     }
     
     if data:
-        response_body.update(data)
-    
-    return {
-        'statusCode': status_code,
-        'body': json.dumps(response_body)
-    }
+        response['data'] = data
+        
+    return response

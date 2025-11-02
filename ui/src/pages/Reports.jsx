@@ -1,6 +1,15 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { reportsApi } from '../services/api'
+import axios from 'axios'
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '/api',
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
 import {
   FileText,
   Download,
@@ -8,7 +17,8 @@ import {
   Eye,
   Mail,
   BarChart3,
-  TrendingUp
+  TrendingUp,
+  RefreshCw
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
@@ -61,14 +71,26 @@ function ReportCard({ report }) {
           )}
         </div>
         <div className="flex items-center space-x-2">
-          <button className="btn btn-secondary">
-            <Eye className="w-4 h-4 mr-2" />
-            View
-          </button>
-          <button className="btn btn-primary">
+          {report.viewUrl && (
+            <a 
+              href={report.viewUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="btn btn-secondary"
+            >
+              <Eye className="w-4 h-4 mr-2" />
+              View
+            </a>
+          )}
+          <a 
+            href={report.downloadUrl} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="btn btn-primary"
+          >
             <Download className="w-4 h-4 mr-2" />
             Download
-          </button>
+          </a>
         </div>
       </div>
     </div>
@@ -78,12 +100,30 @@ function ReportCard({ report }) {
 export default function Reports() {
   const [reportType, setReportType] = useState('all') // all, web, user
   const [dateRange, setDateRange] = useState('7d') // 7d, 30d, 90d, all
+  const [refreshing, setRefreshing] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pageSize] = useState(20) // Fixed page size
+  const queryClient = useQueryClient()
 
-  const { data: reports, isLoading } = useQuery({
-    queryKey: ['reports', reportType, dateRange],
-    queryFn: () => reportsApi.getHistory({ type: reportType, range: dateRange }),
-    select: (response) => response.data,
+  const { data: reportsResponse, isLoading, error } = useQuery({
+    queryKey: ['reports', reportType, dateRange, page, pageSize],
+    queryFn: () => api.get('/reports', { 
+      params: { 
+        type: reportType, 
+        range: dateRange,
+        page: page,
+        pageSize: pageSize
+      } 
+    }),
+    select: (response) => {
+      console.log('Reports API response:', response.data);
+      return response.data;
+    },
   })
+
+  const reports = reportsResponse?.items || []
+  const totalReports = reportsResponse?.total || 0
+  const totalPages = reportsResponse?.totalPages || Math.ceil(totalReports / pageSize)
 
   // Mock data
   const mockReports = [
@@ -144,7 +184,51 @@ export default function Reports() {
     },
   ]
 
-  const displayReports = reports || mockReports
+  // Map API data to UI format
+  const mappedReports = reports ? reports.map(report => ({
+    id: report.id,
+    type: report.type,
+    title: report.title,
+    generatedDate: report.generatedDate,
+    opportunities: report.opportunities || 0,
+    matches: report.matches || 0,
+    summary: report.summary,
+    emailSent: report.emailSent,
+    url: report.viewUrl || report.downloadUrl,
+    downloadUrl: report.downloadUrl,
+    viewUrl: `${import.meta.env.VITE_API_BASE_URL}/reports/${report.id}/view`, // Use API proxy for viewing
+    size: report.size,
+    filename: report.filename
+  })) : null;
+
+  // Reset to page 1 when filters change
+  const handleFilterChange = (newReportType, newDateRange) => {
+    if (newReportType !== reportType || newDateRange !== dateRange) {
+      setPage(1)
+    }
+    if (newReportType !== reportType) setReportType(newReportType)
+    if (newDateRange !== dateRange) setDateRange(newDateRange)
+  }
+  
+  const displayReports = mappedReports || mockReports
+  
+  console.log('Reports data:', reports);
+  console.log('Mapped reports:', mappedReports);
+  console.log('Display reports:', displayReports);
+  if (error) console.error('Reports query error:', error);
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      // Force refresh the reports query
+      await queryClient.invalidateQueries({ queryKey: ['reports'] })
+      // Also refresh opportunities and matches in case new data affects reports
+      await queryClient.invalidateQueries({ queryKey: ['opportunities'] })
+      await queryClient.invalidateQueries({ queryKey: ['matches'] })
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const filteredReports = displayReports.filter(report => {
     if (reportType !== 'all' && report.type !== reportType) return false
@@ -161,10 +245,20 @@ export default function Reports() {
             Generated dashboards and response templates
           </p>
         </div>
-        <button className="btn btn-primary">
-          <FileText className="w-5 h-5 mr-2" />
-          Generate New Report
-        </button>
+        <div className="flex space-x-3">
+          <button 
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="btn btn-secondary disabled:opacity-50"
+          >
+            <RefreshCw className={`w-5 h-5 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+          <button className="btn btn-primary">
+            <FileText className="w-5 h-5 mr-2" />
+            Generate New Report
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -174,7 +268,7 @@ export default function Reports() {
             <div>
               <p className="text-sm font-medium text-gray-600">Total Reports</p>
               <p className="mt-2 text-3xl font-semibold text-gray-900">
-                {displayReports.length}
+                {totalReports || displayReports.length}
               </p>
             </div>
             <FileText className="w-12 h-12 text-primary-600 opacity-20" />
@@ -221,26 +315,36 @@ export default function Reports() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center space-x-3">
-        <select
-          value={reportType}
-          onChange={(e) => setReportType(e.target.value)}
-          className="input w-auto"
-        >
-          <option value="all">All Reports</option>
-          <option value="web">Web Dashboards</option>
-          <option value="user">User Reports</option>
-        </select>
-        <select
-          value={dateRange}
-          onChange={(e) => setDateRange(e.target.value)}
-          className="input w-auto"
-        >
-          <option value="7d">Last 7 Days</option>
-          <option value="30d">Last 30 Days</option>
-          <option value="90d">Last 90 Days</option>
-          <option value="all">All Time</option>
-        </select>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <select
+            value={reportType}
+            onChange={(e) => handleFilterChange(e.target.value, dateRange)}
+            className="input w-auto"
+          >
+            <option value="all">All Reports</option>
+            <option value="web">Web Dashboards</option>
+            <option value="user">User Reports</option>
+            <option value="workflow">Manual Workflow Reports</option>
+          </select>
+          <select
+            value={dateRange}
+            onChange={(e) => handleFilterChange(reportType, e.target.value)}
+            className="input w-auto"
+          >
+            <option value="7d">Last 7 Days</option>
+            <option value="30d">Last 30 Days</option>
+            <option value="90d">Last 90 Days</option>
+            <option value="all">All Time</option>
+          </select>
+        </div>
+        
+        {/* Pagination Info */}
+        {totalReports > 0 && (
+          <div className="text-sm text-gray-500">
+            Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, totalReports)} of {totalReports} reports
+          </div>
+        )}
       </div>
 
       {/* Reports List */}
@@ -266,6 +370,86 @@ export default function Reports() {
           {filteredReports.map((report) => (
             <ReportCard key={report.id} report={report} />
           ))}
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+          <div className="flex flex-1 justify-between sm:hidden">
+            <button
+              onClick={() => setPage(Math.max(1, page - 1))}
+              disabled={page <= 1}
+              className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage(Math.min(totalPages, page + 1))}
+              disabled={page >= totalPages}
+              className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+          <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm text-gray-700">
+                Showing <span className="font-medium">{(page - 1) * pageSize + 1}</span> to{' '}
+                <span className="font-medium">{Math.min(page * pageSize, totalReports)}</span> of{' '}
+                <span className="font-medium">{totalReports}</span> results
+              </p>
+            </div>
+            <div>
+              <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                <button
+                  onClick={() => setPage(Math.max(1, page - 1))}
+                  disabled={page <= 1}
+                  className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="sr-only">Previous</span>
+                  ←
+                </button>
+                
+                {/* Page Numbers */}
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum
+                  if (totalPages <= 5) {
+                    pageNum = i + 1
+                  } else if (page <= 3) {
+                    pageNum = i + 1
+                  } else if (page >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i
+                  } else {
+                    pageNum = page - 2 + i
+                  }
+                  
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setPage(pageNum)}
+                      className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${
+                        pageNum === page
+                          ? 'z-10 bg-primary-600 text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
+                          : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  )
+                })}
+                
+                <button
+                  onClick={() => setPage(Math.min(totalPages, page + 1))}
+                  disabled={page >= totalPages}
+                  className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="sr-only">Next</span>
+                  →
+                </button>
+              </nav>
+            </div>
+          </div>
         </div>
       )}
     </div>

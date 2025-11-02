@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { matchesApi } from '../services/api'
 import {
@@ -10,7 +10,9 @@ import {
   FileText,
   ExternalLink,
   Star,
-  Filter
+  Filter,
+  Play,
+  RefreshCw
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
@@ -97,13 +99,43 @@ function MatchCard({ match }) {
 }
 
 export default function Matches() {
+  const queryClient = useQueryClient()
   const [filter, setFilter] = useState('all') // all, high, medium
   const [sortBy, setSortBy] = useState('score') // score, date, value
 
-  const { data: matches, isLoading } = useQuery({
+  const { data: matches, isLoading, error } = useQuery({
     queryKey: ['matches', filter, sortBy],
     queryFn: () => matchesApi.getAll({ filter, sortBy }),
-    select: (response) => response.data,
+    select: (response) => {
+      console.log('Matches API response:', response.data);
+      const apiMatches = response.data?.items || response.data || [];
+      
+      // Map API response to expected UI format
+      return apiMatches.map(match => ({
+        id: match.id,
+        opportunityId: match.opportunityId,
+        opportunityTitle: match.title,
+        description: `Match Score: ${(match.matchScore * 100).toFixed(0)}% - ${match.reason}`,
+        agency: match.agency,
+        category: match.type,
+        matchedDate: match.createdDate,
+        value: '$0',
+        score: match.matchScore,
+        keyFactors: [match.status, 'AI Match', 'Automated'],
+      }));
+    },
+  })
+
+  const triggerMatchingMutation = useMutation({
+    mutationFn: () => matchesApi.triggerMatching(),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['matches'] })
+      // Show success message
+      console.log('Matching triggered successfully:', response.data)
+    },
+    onError: (error) => {
+      console.error('Failed to trigger matching:', error)
+    }
   })
 
   // Mock data
@@ -170,7 +202,11 @@ export default function Matches() {
     },
   ]
 
-  const displayMatches = matches || mockMatches
+  const displayMatches = matches && matches.length > 0 ? matches : mockMatches
+  
+  console.log('Matches data:', matches);
+  console.log('Display matches:', displayMatches);
+  if (error) console.error('Matches query error:', error);
 
   const filteredMatches = displayMatches.filter(match => {
     if (filter === 'high') return match.score >= 0.85
@@ -189,6 +225,23 @@ export default function Matches() {
           </p>
         </div>
         <div className="flex items-center space-x-3">
+          <button
+            onClick={() => triggerMatchingMutation.mutate()}
+            disabled={triggerMatchingMutation.isPending}
+            className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {triggerMatchingMutation.isPending ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4 mr-2" />
+                Generate Matches
+              </>
+            )}
+          </button>
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
@@ -262,9 +315,26 @@ export default function Matches() {
         <div className="card text-center py-12">
           <Target className="w-16 h-16 mx-auto text-gray-400 mb-4" />
           <h3 className="text-lg font-semibold text-gray-900 mb-2">No matches found</h3>
-          <p className="text-sm text-gray-500">
-            Try adjusting your filters or run the matching workflow
+          <p className="text-sm text-gray-500 mb-4">
+            Click "Generate Matches" to analyze opportunities against company capabilities
           </p>
+          <button
+            onClick={() => triggerMatchingMutation.mutate()}
+            disabled={triggerMatchingMutation.isPending}
+            className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {triggerMatchingMutation.isPending ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Generating Matches...
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4 mr-2" />
+                Generate Matches
+              </>
+            )}
+          </button>
         </div>
       ) : (
         <div className="space-y-4">

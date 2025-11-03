@@ -141,20 +141,25 @@ def get_matches_data():
             if 'Contents' in page:
                 for obj in page['Contents']:
                     if obj['Key'].endswith('.json'):
-                        count += 1
-                        if len(matches) < 5:  # Get sample matches
-                            try:
-                                response = s3.get_object(Bucket=matches_bucket, Key=obj['Key'])
-                                match_data = json.loads(response['Body'].read().decode('utf-8'))
-                                matches.append({
-                                    'title': match_data.get('opportunity_title', match_data.get('title', 'Unknown')),
-                                    'score': match_data.get('match_score', match_data.get('score', 0.0)),
-                                    'agency': match_data.get('agency', match_data.get('department', 'Unknown')),
-                                    'date': obj['LastModified'].strftime('%Y-%m-%d') if 'LastModified' in obj else 'Unknown'
-                                })
-                            except Exception as e:
-                                print(f"Error processing match {obj['Key']}: {str(e)}")
-                                continue
+                        try:
+                            response = s3.get_object(Bucket=matches_bucket, Key=obj['Key'])
+                            match_array = json.loads(response['Body'].read().decode('utf-8'))
+                            
+                            # Each file contains an array of matches
+                            if isinstance(match_array, list):
+                                for match_data in match_array:
+                                    count += 1
+                                    if len(matches) < 5:  # Get sample matches
+                                        matches.append({
+                                            'title': match_data.get('title', 'Unknown'),
+                                            'score': match_data.get('score', 0.0),
+                                            'agency': match_data.get('fullParentPathName', 'Unknown').split('.')[-1] if match_data.get('fullParentPathName') else 'Unknown',
+                                            'date': obj['LastModified'].strftime('%Y-%m-%d') if 'LastModified' in obj else 'Unknown',
+                                            'solicitation': match_data.get('solicitationNumber', 'Unknown')
+                                        })
+                        except Exception as e:
+                            print(f"Error processing match {obj['Key']}: {str(e)}")
+                            continue
         
         return {'count': count, 'items': matches}
         

@@ -241,6 +241,16 @@ def generate_dashboard_html(date_display, opportunities_count, matches_count, op
             score_groups[0.6]['matches'].append(match)
         elif score >= 0.5:
             score_groups[0.5]['matches'].append(match)
+        else:
+            # For debugging: show matches with score 0.0 in a separate section
+            if score == 0.0:
+                if 0.0 not in score_groups:
+                    score_groups[0.0] = {
+                        'matches': [],
+                        'label': '🔍 Matches Being Processed (Score 0.0)',
+                        'color': 'bg-info'
+                    }
+                score_groups[0.0]['matches'].append(match)
     
     # Calculate average score
     avg_score = sum(float(match.get('score', 0)) for match in matches) / max(len(matches), 1)

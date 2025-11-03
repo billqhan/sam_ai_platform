@@ -121,7 +121,7 @@ EOF
     REQUIREMENTS_PATH="${TEMP_DIR}/requirements.txt"
     if [[ -f "$REQUIREMENTS_PATH" ]]; then
         echo "   Installing dependencies..."
-        pip install -r "$REQUIREMENTS_PATH" -t "$TEMP_DIR" --quiet --no-color
+        python3 -m pip install -r "$REQUIREMENTS_PATH" -t "$TEMP_DIR" --quiet --no-color
         
         if [[ $? -ne 0 ]]; then
             echo "    Warning: Some dependencies may have failed to install"

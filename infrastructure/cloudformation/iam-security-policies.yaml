@@ -327,6 +327,17 @@ Resources:
             Action:
               - s3:ListBucket
             Resource: !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}'
+          - Sid: S3ExtractedResourcesAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
+            Resource: !Sub 'arn:aws:s3:::${BucketPrefix}-sam-extracted-json-resources-${Environment}/*'
+          - Sid: S3ExtractedResourcesBucketList
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource: !Sub 'arn:aws:s3:::${BucketPrefix}-sam-extracted-json-resources-${Environment}'
           - Sid: S3WebsiteAccess
             Effect: Allow
             Action:

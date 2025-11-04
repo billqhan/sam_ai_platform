@@ -1,0 +1,246 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AI-powered RFP Response Agent - DynamoDB Tables (Simple Version)'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    AllowedValues: ['dev', 'staging', 'prod']
+    Description: 'Environment name for resource naming'
+
+  BucketPrefix:
+    Type: String
+    Default: ''
+    Description: 'Optional prefix to namespace resource names'
+
+Conditions:
+  HasBucketPrefix: !Not [!Equals [!Ref BucketPrefix, '']]
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # Opportunities Table
+  #  - PK: oppId (string)
+  #  - SK: postedDate (ISO string) for time-sorted queries
+  #  - GSIs for common filters and listings
+  # ---------------------------------------------------------------------------
+  OpportunitiesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-opportunities-${Environment}'
+        - !Sub 'sam-opportunities-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: oppId
+          AttributeType: S
+        - AttributeName: postedDate
+          AttributeType: S
+        - AttributeName: agency
+          AttributeType: S
+        - AttributeName: category
+          AttributeType: S
+        - AttributeName: active
+          AttributeType: S
+      KeySchema:
+        - AttributeName: oppId
+          KeyType: HASH
+        - AttributeName: postedDate
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: agency-postedDate-index
+          KeySchema:
+            - AttributeName: agency
+              KeyType: HASH
+            - AttributeName: postedDate
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: category-postedDate-index
+          KeySchema:
+            - AttributeName: category
+              KeyType: HASH
+            - AttributeName: postedDate
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: active-postedDate-index
+          KeySchema:
+            - AttributeName: active
+              KeyType: HASH
+            - AttributeName: postedDate
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # ---------------------------------------------------------------------------
+  # Matches Table
+  #  - PK: oppId (string)
+  #  - SK: matchId (string)
+  #  - GSI1: Top matches global listing by score (descending via inverted score)
+  #  - GSI2: status listing by timestamp
+  # ---------------------------------------------------------------------------
+  MatchesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-matches-${Environment}'
+        - !Sub 'sam-matches-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: oppId
+          AttributeType: S
+        - AttributeName: matchId
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: N
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: oppId
+          KeyType: HASH
+        - AttributeName: matchId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        # Global top matches: set gsi1pk = 'MATCHES', gsi1sk = int(score*1000) or inverted for desc
+        - IndexName: top-matches-index
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        # Status/time listing: status + createdAt to find recent pending/processed
+        - IndexName: status-createdAt-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # ---------------------------------------------------------------------------
+  # Reports Table
+  #  - PK: reportType (string: web|user|workflow|analysis)
+  #  - SK: generatedAt (ISO string) for recent-first queries
+  #  - GSI: by opportunityId for per-opportunity report discovery
+  # ---------------------------------------------------------------------------
+  ReportsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-reports-${Environment}'
+        - !Sub 'sam-reports-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: reportType
+          AttributeType: S
+        - AttributeName: generatedAt
+          AttributeType: S
+        - AttributeName: opportunityId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: reportType
+          KeyType: HASH
+        - AttributeName: generatedAt
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: opportunityId-generatedAt-index
+          KeySchema:
+            - AttributeName: opportunityId
+              KeyType: HASH
+            - AttributeName: generatedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # ---------------------------------------------------------------------------
+  # Proposals Table
+  #  - PK: proposalId (string)
+  #  - SK: lastModified (ISO string) for time-sorted queries
+  #  - GSIs for filtering by status, agency, assigned team member
+  # ---------------------------------------------------------------------------
+  ProposalsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If
+        - HasBucketPrefix
+        - !Sub '${BucketPrefix}-sam-proposals-${Environment}'
+        - !Sub 'sam-proposals-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: proposalId
+          AttributeType: S
+        - AttributeName: lastModified
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: agency
+          AttributeType: S
+        - AttributeName: assignedTo
+          AttributeType: S
+        - AttributeName: deadline
+          AttributeType: S
+      KeySchema:
+        - AttributeName: proposalId
+          KeyType: HASH
+        - AttributeName: lastModified
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: status-lastModified-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: lastModified
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: agency-deadline-index
+          KeySchema:
+            - AttributeName: agency
+              KeyType: HASH
+            - AttributeName: deadline
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: assignedTo-lastModified-index
+          KeySchema:
+            - AttributeName: assignedTo
+              KeyType: HASH
+            - AttributeName: lastModified
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+Outputs:
+  OpportunitiesTableName:
+    Description: 'DynamoDB table name for opportunities'
+    Value: !Ref OpportunitiesTable
+    Export:
+      Name: !Sub '${AWS::StackName}-OpportunitiesTable'
+
+  MatchesTableName:
+    Description: 'DynamoDB table name for matches'
+    Value: !Ref MatchesTable
+    Export:
+      Name: !Sub '${AWS::StackName}-MatchesTable'
+
+  ReportsTableName:
+    Description: 'DynamoDB table name for reports'
+    Value: !Ref ReportsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-ReportsTable'
+
+  ProposalsTableName:
+    Description: 'DynamoDB table name for proposals'
+    Value: !Ref ProposalsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-ProposalsTable'

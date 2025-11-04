@@ -60,10 +60,27 @@ Resources:
         - Key: Project
           Value: 'AI-RFP-Response-Agent'
 
+  # DynamoDB Tables Stack
+  DynamoDbTablesStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: MainInfrastructureStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}dynamodb-tables.yaml'
+      Parameters:
+        Environment: !Ref Environment
+        BucketPrefix: !Ref BucketPrefix
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: 'AI-RFP-Response-Agent'
+
   # Lambda Functions Stack
   LambdaFunctionsStack:
     Type: AWS::CloudFormation::Stack
-    DependsOn: MainInfrastructureStack
+    DependsOn: 
+      - MainInfrastructureStack
+      - DynamoDbTablesStack
     Properties:
       TemplateURL: !Sub 'https://${TemplatesBucketName}.s3.amazonaws.com/${TemplatesBucketPrefix}lambda-functions.yaml'
       Parameters:

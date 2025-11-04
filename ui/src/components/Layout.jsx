@@ -5,6 +5,7 @@ import {
   FileText, 
   Target, 
   Play, 
+  Users,
   BarChart3, 
   Settings,
   Menu,
@@ -18,7 +19,8 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Opportunities', href: '/opportunities', icon: FileText },
   { name: 'Matches', href: '/matches', icon: Target },
-  { name: 'Workflow', href: '/workflow', icon: Play },
+  { name: 'Proposals', href: '/proposals', icon: Users },
+  { name: 'RFI Pipeline', href: '/workflow', icon: Play },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]

@@ -7,11 +7,12 @@ This directory contains AWS CloudFormation templates for deploying the AI-powere
 The infrastructure is organized into multiple nested CloudFormation stacks:
 
 1. **Main Infrastructure Stack** (`main-template.yaml`) - S3 buckets and SQS queue
-2. **Lambda Functions Stack** (`lambda-functions.yaml`) - All Lambda functions and IAM roles
-3. **EventBridge Rules Stack** (`eventbridge-rules.yaml`) - Scheduled triggers
-4. **S3 Bucket Policies Stack** (`s3-bucket-policies.yaml`) - Security policies and permissions
-5. **S3 Event Notifications Stack** (`s3-event-notifications.yaml`) - S3 event triggers
-6. **Master Template** (`master-template.yaml`) - Orchestrates all nested stacks
+2. **DynamoDB Tables Stack** (`dynamodb-tables.yaml`) - Opportunities, Matches, Reports tables + GSIs
+3. **Lambda Functions Stack** (`lambda-functions.yaml`) - All Lambda functions and IAM roles
+4. **EventBridge Rules Stack** (`eventbridge-rules.yaml`) - Scheduled triggers
+5. **S3 Bucket Policies Stack** (`s3-bucket-policies.yaml`) - Security policies and permissions
+6. **S3 Event Notifications Stack** (`s3-event-notifications.yaml`) - S3 event triggers
+7. **Master Template** (`master-template.yaml`) - Orchestrates all nested stacks
 
 ## Prerequisites
 

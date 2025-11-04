@@ -1,0 +1,15 @@
+{
+  "name": "proposal-service",
+  "version": "1.0.0",
+  "description": "AWS Lambda function for managing proposals in DynamoDB",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1490.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["aws", "lambda", "dynamodb", "proposals"],
+  "author": "RFI AI Platform",
+  "license": "MIT"
+}

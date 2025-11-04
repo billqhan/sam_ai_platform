@@ -112,4 +112,25 @@ export const settingsApi = {
   updateProfile: (profileId, data) => api.put(`/settings/profiles/${profileId}`, data),
 };
 
+export const proposalApi = {
+  // Get proposals and matches
+  getProposals: () => api.get('/proposals'),
+  getProposal: (id) => api.get(`/proposals/${id}`),
+  getMatches: () => api.get('/matches'),
+  
+  // Proposal CRUD operations
+  createProposal: (data) => api.post('/proposals', data),
+  updateProposal: (id, data) => api.put(`/proposals/${id}`, data),
+  deleteProposal: (id) => api.delete(`/proposals/${id}`),
+  
+  // Proposal workflow
+  submitProposal: (id) => api.post(`/proposals/${id}/submit`),
+  approveProposal: (id) => api.post(`/proposals/${id}/approve`),
+  rejectProposal: (id, reason) => api.post(`/proposals/${id}/reject`, { reason }),
+  
+  // Proposal sections
+  updateSection: (proposalId, section, data) => api.put(`/proposals/${proposalId}/sections/${section}`, data),
+  getSection: (proposalId, section) => api.get(`/proposals/${proposalId}/sections/${section}`),
+};
+
 export default api;

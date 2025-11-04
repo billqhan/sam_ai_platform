@@ -7,6 +7,8 @@ import Matches from './pages/Matches'
 import Workflow from './pages/Workflow'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
+import Proposals from './pages/Proposals'
+import TestPage from './pages/TestPage'
 
 function App() {
   return (
@@ -18,6 +20,7 @@ function App() {
           <Route path="/opportunities/:id" element={<OpportunityDetail />} />
           <Route path="/matches" element={<Matches />} />
           <Route path="/workflow" element={<Workflow />} />
+          <Route path="/proposals" element={<Proposals />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />

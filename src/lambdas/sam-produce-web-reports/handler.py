@@ -157,59 +157,73 @@ def get_matches_data(target_date: Optional[str] = None):
     try:
         matches_bucket = f'{BUCKET_PREFIX}-sam-matching-out-runs-{ENVIRONMENT}'
         
-        # List objects in the bucket
+        # List objects in the bucket - look for matching_summary.json files
         paginator = s3.get_paginator('list_objects_v2')
-        if target_date:
-            # For matches, we need to look for files that match the date pattern
-            # Convert YYYY-MM-DD to YYYYMMDD format for matching files
-            date_compact = target_date.replace("-", "")
-            print(f"Looking for matches data for date: {date_compact}")
-        page_iterator = paginator.paginate(Bucket=matches_bucket)
+        page_iterator = paginator.paginate(Bucket=matches_bucket, Prefix='runs/')
         
         matches = []
         count = 0
+        latest_run = None
+        
+        print(f"Looking for matching data in bucket: {matches_bucket}")
         
         for page in page_iterator:
             if 'Contents' in page:
-                for obj in page['Contents']:  # Process all files
+                print(f"Found {len(page['Contents'])} files in runs folder")
+                for obj in page['Contents']:
                     try:
-                        # Filter by date if specified
-                        if target_date and date_compact:
-                            # Check if filename contains the date pattern
-                            filename = obj['Key']
-                            if not filename.startswith(f"runs/{date_compact}"):
-                                continue  # Skip files that don't match the target date
+                        # Look for matching_summary.json files
+                        if not obj['Key'].endswith('matching_summary.json'):
+                            continue
                         
-                        count += 1
-                        if count > 20:  # Limit for performance
-                            break
-                        # Load match file and extract all opportunities
+                        print(f"Processing matching file: {obj['Key']}")
+                        
+                        # If target_date is specified, filter by run date
+                        if target_date:
+                            # Extract date from run folder name (e.g., run-20251104-230844)
+                            import re
+                            date_match = re.search(r'run-(\d{8})', obj['Key'])
+                            if date_match:
+                                run_date = date_match.group(1)
+                                target_compact = target_date.replace("-", "")
+                                if run_date != target_compact:
+                                    print(f"Skipping run {obj['Key']} - date {run_date} doesn't match {target_compact}")
+                                    continue
+                        
+                        # Load match file
                         response = s3.get_object(Bucket=matches_bucket, Key=obj['Key'])
                         match_data = json.loads(response['Body'].read().decode('utf-8'))
                         
-                        # The match file contains an array of opportunities
-                        if isinstance(match_data, list):
-                            for opportunity in match_data:
+                        print(f"Loaded matching data with {len(match_data.get('matches', []))} matches")
+                        
+                        # Extract matches from the summary file structure
+                        if 'matches' in match_data and isinstance(match_data['matches'], list):
+                            for opportunity in match_data['matches']:
                                 if len(matches) >= 50:  # Limit total matches for performance
                                     break
                                 matches.append({
                                     'title': opportunity.get('title', 'Unknown'),
-                                    'score': opportunity.get('score', 0.0),
-                                    'agency': opportunity.get('fullParentPathName', 'Unknown'),
+                                    'score': float(opportunity.get('match_score', 0.0)),
+                                    'agency': 'Department of Defense',  # Default agency
                                     'date': obj['LastModified'].strftime('%Y-%m-%d') if 'LastModified' in obj else 'Unknown',
-                                    'solicitation_id': opportunity.get('solicitationNumber', 'N/A'),
-                                    'deadline': opportunity.get('responseDeadLine', 'Not specified'),
-                                    'type': opportunity.get('type', 'Solicitation'),
+                                    'solicitation_id': opportunity.get('notice_id', 'N/A'),
+                                    'deadline': 'Not specified',
+                                    'type': 'Solicitation',
                                     'poc': 'Not specified',
-                                    'enhanced_description': opportunity.get('enhanced_description', ''),
-                                    'rationale': opportunity.get('rationale', ''),
-                                    'opportunity_required_skills': opportunity.get('opportunity_required_skills', []),
-                                    'company_skills': opportunity.get('company_skills', [])
+                                    'enhanced_description': opportunity.get('match_reason', ''),
+                                    'rationale': opportunity.get('recommendation', ''),
+                                    'opportunity_required_skills': [],
+                                    'company_skills': []
                                 })
+                        
+                        count = len(matches)  # Update count to reflect actual matches
+                        latest_run = obj['Key']
+                        
                     except Exception as e:
                         print(f"Error processing match {obj['Key']}: {str(e)}")
                         continue
         
+        print(f"Found {count} total matches from {latest_run}")
         return {'count': count, 'items': matches}
         
     except Exception as e:

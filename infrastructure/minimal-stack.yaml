@@ -1,0 +1,168 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AI-Powered RFP Response Agent - Minimal Core Infrastructure'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    Description: 'Environment name for resource naming'
+  
+  BucketPrefix:
+    Type: String
+    Default: 'l3harris-qhan'
+    Description: 'Prefix for S3 bucket names to avoid conflicts'
+
+Resources:
+  # S3 Bucket for SAM.gov data input
+  SamDataInBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${BucketPrefix}-sam-data-in-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # S3 Bucket for processed opportunities
+  OpportunitiesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${BucketPrefix}-opportunities-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # S3 Bucket for match results
+  MatchResultsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${BucketPrefix}-match-results-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # S3 Bucket for generated reports
+  ReportsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${BucketPrefix}-reports-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # DynamoDB Table for opportunity tracking
+  OpportunityTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${BucketPrefix}-opportunities-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: opportunityId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: opportunityId
+          KeyType: HASH
+        - AttributeName: createdAt
+          KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  # DynamoDB Table for match results
+  MatchResultsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${BucketPrefix}-match-results-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: matchId
+          AttributeType: S
+        - AttributeName: opportunityId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: matchId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: OpportunityIndex
+          KeySchema:
+            - AttributeName: opportunityId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # SQS Queue for opportunity processing
+  OpportunityProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${BucketPrefix}-opportunity-processing-${Environment}'
+      VisibilityTimeoutSeconds: 300
+      MessageRetentionPeriod: 1209600
+
+  # SQS Queue for match processing
+  MatchProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${BucketPrefix}-match-processing-${Environment}'
+      VisibilityTimeoutSeconds: 300
+      MessageRetentionPeriod: 1209600
+
+Outputs:
+  SamDataInBucket:
+    Description: 'S3 Bucket for SAM.gov data input'
+    Value: !Ref SamDataInBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-SamDataInBucket'
+
+  OpportunitiesBucket:
+    Description: 'S3 Bucket for processed opportunities'
+    Value: !Ref OpportunitiesBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-OpportunitiesBucket'
+
+  MatchResultsBucket:
+    Description: 'S3 Bucket for match results'
+    Value: !Ref MatchResultsBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-MatchResultsBucket'
+
+  ReportsBucket:
+    Description: 'S3 Bucket for generated reports'
+    Value: !Ref ReportsBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-ReportsBucket'
+
+  OpportunityTable:
+    Description: 'DynamoDB Table for opportunity tracking'
+    Value: !Ref OpportunityTable
+    Export:
+      Name: !Sub '${AWS::StackName}-OpportunityTable'
+
+  MatchResultsTable:
+    Description: 'DynamoDB Table for match results'
+    Value: !Ref MatchResultsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-MatchResultsTable'
+
+  OpportunityProcessingQueue:
+    Description: 'SQS Queue for opportunity processing'
+    Value: !Ref OpportunityProcessingQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-OpportunityProcessingQueue'
+
+  MatchProcessingQueue:
+    Description: 'SQS Queue for match processing'
+    Value: !Ref MatchProcessingQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-MatchProcessingQueue'

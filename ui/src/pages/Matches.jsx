@@ -12,10 +12,7 @@ import {
   Star,
   Filter,
   Play,
-  RefreshCw,
-  Edit3,
-  Save,
-  X
+  RefreshCw
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
@@ -101,160 +98,12 @@ function MatchCard({ match }) {
   )
 }
 
-// Prompt Editor Modal Component
-function PromptEditor({ isOpen, onClose, onSave }) {
-  const [prompts, setPrompts] = useState({
-    matchingPrompt: '',
-    scoringPrompt: '',
-    categoryPrompt: ''
-  })
 
-  // Load saved prompts from localStorage on open
-  useEffect(() => {
-    if (isOpen) {
-      const savedPrompts = localStorage.getItem('ai-matching-prompts')
-      if (savedPrompts) {
-        setPrompts(JSON.parse(savedPrompts))
-      } else {
-        // Default prompts
-        setPrompts({
-          matchingPrompt: `Analyze the following government opportunity and determine how well it matches our company's capabilities. Consider:
-
-1. Technical requirements alignment
-2. Past experience relevance  
-3. Team expertise match
-4. Contract size and scope fit
-5. Timeline feasibility
-
-Provide a detailed analysis of strengths, potential challenges, and overall match quality.`,
-          
-          scoringPrompt: `Rate this opportunity match on a scale of 0.0 to 1.0 based on:
-
-- Technical capability alignment (30%)
-- Past performance relevance (25%) 
-- Team availability and expertise (20%)
-- Contract value and profitability (15%)
-- Timeline and resource feasibility (10%)
-
-Provide the numerical score and brief justification.`,
-          
-          categoryPrompt: `Categorize this opportunity into one of the following categories:
-
-1. High Priority - Excellent fit, pursue aggressively
-2. Medium Priority - Good fit with some gaps to address
-3. Low Priority - Marginal fit, consider if resources allow
-4. No Bid - Poor fit or significant barriers
-
-Explain the category selection reasoning.`
-        })
-      }
-    }
-  }, [isOpen])
-
-  const handleSave = () => {
-    localStorage.setItem('ai-matching-prompts', JSON.stringify(prompts))
-    onSave(prompts)
-    onClose()
-  }
-
-  if (!isOpen) return null
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">Edit AI Matching Prompts</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-          <div className="space-y-6">
-            {/* Matching Analysis Prompt */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Matching Analysis Prompt
-              </label>
-              <textarea
-                value={prompts.matchingPrompt}
-                onChange={(e) => setPrompts({ ...prompts, matchingPrompt: e.target.value })}
-                rows={6}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                placeholder="Enter the prompt for analyzing opportunity matches..."
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                This prompt guides the AI in analyzing how well opportunities match company capabilities.
-              </p>
-            </div>
-
-            {/* Scoring Prompt */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Scoring Prompt
-              </label>
-              <textarea
-                value={prompts.scoringPrompt}
-                onChange={(e) => setPrompts({ ...prompts, scoringPrompt: e.target.value })}
-                rows={6}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                placeholder="Enter the prompt for scoring matches..."
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                This prompt guides the AI in assigning numerical scores to opportunity matches.
-              </p>
-            </div>
-
-            {/* Category Prompt */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Categorization Prompt
-              </label>
-              <textarea
-                value={prompts.categoryPrompt}
-                onChange={(e) => setPrompts({ ...prompts, categoryPrompt: e.target.value })}
-                rows={6}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                placeholder="Enter the prompt for categorizing matches..."
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                This prompt guides the AI in categorizing opportunities by priority level.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end space-x-3 p-6 border-t border-gray-200">
-          <button
-            onClick={onClose}
-            className="btn btn-secondary"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            className="btn btn-primary"
-          >
-            <Save className="w-4 h-4 mr-2" />
-            Save Prompts
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 export default function Matches() {
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState('all') // all, high, medium
   const [sortBy, setSortBy] = useState('score') // score, date, value
-  const [showPromptEditor, setShowPromptEditor] = useState(false)
 
   const { data: matches, isLoading, error } = useQuery({
     queryKey: ['matches', filter, sortBy],
@@ -379,13 +228,6 @@ export default function Matches() {
         </div>
         <div className="flex items-center space-x-3">
           <button
-            onClick={() => setShowPromptEditor(true)}
-            className="btn btn-secondary"
-          >
-            <Edit3 className="w-4 h-4 mr-2" />
-            Edit Prompts
-          </button>
-          <button
             onClick={() => triggerMatchingMutation.mutate()}
             disabled={triggerMatchingMutation.isPending}
             className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
@@ -503,16 +345,6 @@ export default function Matches() {
           ))}
         </div>
       )}
-
-      {/* Prompt Editor Modal */}
-      <PromptEditor
-        isOpen={showPromptEditor}
-        onClose={() => setShowPromptEditor(false)}
-        onSave={(prompts) => {
-          console.log('✅ AI Matching prompts saved:', prompts)
-          // You can add additional logic here to notify the user or trigger re-analysis
-        }}
-      />
     </div>
   )
 }

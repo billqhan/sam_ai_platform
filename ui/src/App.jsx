@@ -8,6 +8,9 @@ import Workflow from './pages/Workflow'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 import Proposals from './pages/Proposals'
+import Prompts from './pages/Prompts'
+import Compliance from './pages/Compliance'
+import KnowledgeRAG from './pages/KnowledgeRAG'
 import TestPage from './pages/TestPage'
 
 function App() {
@@ -21,6 +24,9 @@ function App() {
           <Route path="/matches" element={<Matches />} />
           <Route path="/workflow" element={<Workflow />} />
           <Route path="/proposals" element={<Proposals />} />
+          <Route path="/prompts" element={<Prompts />} />
+          <Route path="/compliance" element={<Compliance />} />
+          <Route path="/knowledge" element={<KnowledgeRAG />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />

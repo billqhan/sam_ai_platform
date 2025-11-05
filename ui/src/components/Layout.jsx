@@ -12,7 +12,10 @@ import {
   X,
   Bell,
   User,
-  Search
+  Search,
+  Shield,
+  MessageSquare,
+  Database
 } from 'lucide-react'
 
 const navigation = [
@@ -20,6 +23,9 @@ const navigation = [
   { name: 'Opportunities', href: '/opportunities', icon: FileText },
   { name: 'Matches', href: '/matches', icon: Target },
   { name: 'Proposals', href: '/proposals', icon: Users },
+  { name: 'Prompts', href: '/prompts', icon: MessageSquare },
+  { name: 'Compliance', href: '/compliance', icon: Shield },
+  { name: 'Knowledge RAG', href: '/knowledge', icon: Database },
   { name: 'RFI Pipeline', href: '/workflow', icon: Play },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
   { name: 'Settings', href: '/settings', icon: Settings },

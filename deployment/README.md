@@ -150,3 +150,12 @@ For detailed troubleshooting, see `../docs/troubleshooting/` directory.
 - Lambda packages are uploaded to S3 first for reliability with large files
 - Monitor CloudWatch logs for Lambda execution details
 - Use workflow scripts in this directory for manual testing and operations
+
+### S3 Event Notifications
+
+`configure-s3-notifications.sh` - Configure S3 event notifications for automatic workflow chaining
+- Configures 4 S3 buckets to trigger Lambda functions and SQS queues automatically
+- Ensures SQS queue uses compatible encryption (SQS-managed, not KMS)
+- Enables fully automated workflow: Download → Process → Match → Reports
+
+**Note**: Run this after initial deployment if S3 notifications are not configured.

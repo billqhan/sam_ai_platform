@@ -6,21 +6,23 @@ This directory contains all deployment and operational scripts for the AI-Powere
 
 ### Primary Deployment (Recommended)
 
-- **`deploy-complete-stack.ps1`** - **MAIN DEPLOYMENT SCRIPT**
-  - Complete orchestration: infrastructure + all lambdas + configuration + validation
-  - Includes error handling, progress tracking, and skip flags
-  - **Usage:** `.\deploy-complete-stack.ps1 -StackName ai-rfp-response-agent-dev -BucketPrefix l3harris-qhan -Region us-east-1`
-  - **Flags:** `-SkipInfra`, `-SkipLambdas`, `-SkipConfig`, `-SkipValidation`
+Use the main deployment script at project root:
+- **`../deploy-complete.sh`** - **MAIN DEPLOYMENT SCRIPT**
+  - Complete orchestration: infrastructure + all lambdas + Java API + UI
+  - Sources configuration from `.env.dev`
+  - **Usage:** `./deploy-complete.sh` (full) or `./deploy-complete.sh lambda` (Lambda only)
+  - **Modules:** `java-api`, `lambda`, `ui`, or omit for full deployment
 
 ### Component Deployment Scripts
 
-- **`deploy-all-lambdas.ps1`** - Deploy all 7 Lambda functions
-  - Called by `deploy-complete-stack.ps1`
-  - Can be run standalone for Lambda-only updates
+- **`deploy-all-lambdas.sh`** / **`deploy-all-lambdas.ps1`** - Deploy all Lambda functions
+  - Uses S3-based deployment for reliability with large packages
+  - Uploads to `ai-rfp-templates-dev` bucket, then updates Lambda functions
+  - Sources configuration from `../.env.dev`
+  - **Usage:** `./deploy-all-lambdas.sh` (called automatically by deploy-complete.sh)
   
 - **`generate-reports-and-notify.ps1`** - Run reporting workflow
   - Executes: merge logs → generate dashboard → send email
-  - Called by `deploy-complete-stack.ps1` for validation
   - Can be run standalone for manual reporting
 
 ## 📊 Workflow Execution Scripts
@@ -47,19 +49,14 @@ This directory contains all deployment and operational scripts for the AI-Powere
 
 ## 🛠️ Utility Scripts
 
-### Infrastructure Management
+### Configuration Management
 
-- **`cloudformation-update-command.ps1`** - Manual CloudFormation update
-  - Updates specific CloudFormation stacks
-  - **Note:** Prefer using `deploy-complete-stack.ps1` instead
+- **`update-sam-api-key.sh`** - Update SAM.gov API key
+  - Updates API key in Lambda environment variables
+  - **Usage:** `./update-sam-api-key.sh NEW_API_KEY`
 
-- **`cloudformation-update-command.sh`** - Bash version for Linux/Mac
-
-### Lambda-Specific
-
-- **`deploy-web-reports-lambda.ps1`** - Deploy only web reports Lambda
-  - Standalone deployment for quick updates
-  - Included in `deploy-all-lambdas.ps1`
+- **`auto-generate-report.sh`** - Automated report generation
+  - Can be scheduled via cron for automated reporting
 
 ### Monitoring & Troubleshooting
 
@@ -82,30 +79,40 @@ Contains Lambda function code and deployment scripts for the match reports gener
 ## 🎯 Common Usage Patterns
 
 ### Full Clean Deploy (Recommended)
-```powershell
-.\deploy-complete-stack.ps1 -StackName ai-rfp-response-agent-dev -BucketPrefix l3harris-qhan -Region us-east-1
+```bash
+# From project root
+./deploy-complete.sh
 ```
 
 ### Deploy Only Lambdas (Code Changes)
-```powershell
-.\deploy-complete-stack.ps1 -StackName ai-rfp-response-agent-dev -BucketPrefix l3harris-qhan -SkipInfra -SkipValidation
-# OR
-.\deploy-all-lambdas.ps1
+```bash
+# From project root
+./deploy-complete.sh lambda
+```
+
+### Deploy Specific Modules
+```bash
+# From project root
+./deploy-complete.sh java-api  # Java API only
+./deploy-complete.sh ui        # UI only
 ```
 
 ### Run Daily Processing Workflow
 ```powershell
+cd deployment
 .\run-complete-workflow.ps1 -OpportunitiesToProcess 10
 ```
 
 ### Generate Reports Manually
 ```powershell
+cd deployment
 .\generate-reports-and-notify.ps1
 ```
 
-### Validate Deployment
+### Trigger Manual Workflow
 ```powershell
-.\generate-reports-and-notify.ps1  # Should return 200 status codes
+cd deployment
+.\trigger-workflow.ps1
 ```
 
 ## 📝 Documentation Files
@@ -119,24 +126,27 @@ Contains Lambda function code and deployment scripts for the match reports gener
 
 All scripts require:
 - AWS CLI configured with appropriate credentials
-- PowerShell 5.1+ (Windows) or PowerShell Core (cross-platform)
-- Proper IAM permissions for Lambda, S3, CloudFormation operations
-- Stack name: `ai-rfp-response-agent-dev`
-- Bucket prefix: `l3harris-qhan`
-- Region: `us-east-1`
+- PowerShell (for workflow scripts only)
+- Bash (for deployment scripts)
+- Proper IAM permissions for Lambda, S3, CloudFormation, ECS operations
+- Configuration file: `.env.dev` at project root (required)
+- Docker (for Java API deployment)
 
 ## 🔍 Troubleshooting
 
 1. **Deployment fails:** Check CloudFormation console for detailed error messages
-2. **Lambda updates fail:** Verify IAM permissions and function names
-3. **No reports generated:** Check Lambda logs in CloudWatch
-4. **DLQ messages:** Use `check-dlq-status.ps1` to investigate
+2. **Lambda updates fail:** Verify IAM permissions and S3 bucket `ai-rfp-templates-dev` exists
+3. **Configuration errors:** Ensure `.env.dev` exists at project root with all required variables
+4. **No reports generated:** Check Lambda logs in CloudWatch
+5. **DLQ messages:** Use `check-dlq-status.ps1` to investigate
+6. **AWS CLI hangs:** Pager disabled via `AWS_PAGER=""` in `.env.dev`
 
 For detailed troubleshooting, see `../docs/troubleshooting/` directory.
 
 ## 📌 Notes
 
-- Always use `deploy-complete-stack.ps1` for production deployments
-- Component scripts are useful for development and quick updates
-- Validate changes with `generate-reports-and-notify.ps1` before committing
+- Always use `../deploy-complete.sh` from project root for deployments
+- All configuration is centralized in `.env.dev` - no hardcoded values
+- Lambda packages are uploaded to S3 first for reliability with large files
 - Monitor CloudWatch logs for Lambda execution details
+- Use workflow scripts in this directory for manual testing and operations

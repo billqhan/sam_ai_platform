@@ -3,8 +3,14 @@
 # Deploy Web UI Script - Bash Version
 # This script builds and deploys the React web UI to S3
 
-BUCKET_NAME="${1:-l3harris-qhan-rfp-ui-dev}"
-REGION="${2:-us-east-1}"
+# Load environment configuration from project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/../.env.dev" ]; then
+    source "$SCRIPT_DIR/../.env.dev"
+fi
+
+BUCKET_NAME="${1:-${UI_BUCKET:-${BUCKET_PREFIX:+${BUCKET_PREFIX}-}rfp-ui-${ENVIRONMENT:-dev}}}"
+REGION="${2:-${REGION:-us-east-1}}"
 CREATE_BUCKET="${3:-false}"
 
 echo ""

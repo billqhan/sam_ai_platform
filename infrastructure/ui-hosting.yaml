@@ -12,7 +12,7 @@ Parameters:
   
   ProjectPrefix:
     Type: String
-    Default: l3harris-qhan
+  # Default removed; must be provided via parameter or environment
 
 Resources:
   # S3 Bucket for UI hosting

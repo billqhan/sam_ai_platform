@@ -2,7 +2,9 @@
 # This script builds and deploys the React web UI to S3
 
 param(
-    [string]$BucketName = "l3harris-qhan-rfp-ui-dev",
+    [string]$BucketPrefix = $env:BUCKET_PREFIX,
+    [string]$Environment = $(if ($env:ENVIRONMENT) { $env:ENVIRONMENT } else { "dev" }),
+    [string]$BucketName = $(if ($BucketPrefix) { "$BucketPrefix-rfp-ui-$Environment" } else { "rfp-ui-$Environment" }),
     [string]$Region = "us-east-1",
     [switch]$CreateBucket
 )

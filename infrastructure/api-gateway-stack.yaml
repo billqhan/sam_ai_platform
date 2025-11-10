@@ -11,7 +11,7 @@ Parameters:
   
   ProjectPrefix:
     Type: String
-    Default: 'l3harris-qhan'
+  # Default removed; must be provided via parameter or environment
     Description: 'Prefix for resource naming to match existing Lambdas'
 
 Resources:

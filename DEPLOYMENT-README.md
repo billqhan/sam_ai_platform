@@ -25,40 +25,38 @@
 
 ## 🛠️ Available Deployment Scripts
 
-### 1. Complete Deployment Verification
+### 1. Complete Deployment (Recommended)
 ```bash
-# Full system check, build, and verification
+# Full system deployment: infrastructure + Lambda + Java API + UI
 ./deploy-complete.sh
 
-# Or just verify current status
+# Or verify current status first
 ./deployment-verify.sh verify
 ```
 
 ### 2. Component-Specific Deployment
 ```bash
+# Deploy only Lambda functions
+./deploy-complete.sh lambda
+
 # Deploy only the React UI
 ./deploy-complete.sh ui
 
-# Deploy Java API to Elastic Beanstalk
-./deploy-complete.sh java-eb
+# Deploy only Java API to ECS with Docker
+./deploy-complete.sh java-api
 
-# Deploy Java API to ECS with Docker
-./deploy-complete.sh java-ecs
-
-# Test deployed components
-./deploy-complete.sh test
+# Deploy all components in sequence
+./deploy-complete.sh
 ```
 
-### 3. Legacy Deployment Scripts
+### 3. Manual Workflow Scripts
 ```bash
-# PowerShell-based complete deployment (if PowerShell available)
-cd deployment && powershell -File deploy-complete-stack.ps1
+# Trigger complete workflow from deployment directory
+cd deployment
+pwsh -File run-complete-workflow.ps1 -OpportunitiesToProcess 10
 
-# Simple deployment script
-./deploy-simple.sh
-
-# Full system deployment script
-./deploy-system.sh
+# Or trigger specific workflow step
+pwsh -File trigger-workflow.ps1
 ```
 
 ## 📊 System Architecture Overview
@@ -86,18 +84,31 @@ cd deployment && powershell -File deploy-complete-stack.ps1
 
 ## 🔧 Deployment Configurations
 
-### Environment Variables
+### Environment Variables (Centralized in `.env.dev`)
+
+All configuration is managed in `.env.dev` at project root. Key variables include:
+
 ```bash
 # Core Configuration
-export STACK_NAME="ai-rfp-response-agent-dev"
-export BUCKET_PREFIX="l3harris-qhan"
-export REGION="us-east-1"
-export ENVIRONMENT="dev"
-export CLOUDFRONT_ID="E3QHR30BKR6VGZ"
+BUCKET_PREFIX="dev"
+ENVIRONMENT="dev"
+REGION="us-east-1"
+STACK_NAME="ai-rfp-response-agent-dev"
 
-# Load configuration
-source deployment.env
+# Storage
+TEMPLATES_BUCKET="ai-rfp-templates-dev"
+# ... additional S3 buckets, DynamoDB tables, SQS queues, etc.
+
+# API Configuration
+SAM_API_KEY="SAM-95a93ccd-9d79-41be-a0a5-0e01ef13a75a"
+API_GATEWAY_URL="https://i7bz81i0l1.execute-api.us-east-1.amazonaws.com/dev"
+CLOUDFRONT_ID="E3QHR30BKR6VGZ"
+
+# AWS CLI Configuration
+AWS_PAGER=""  # Disable pager for automated scripts
 ```
+
+**Note:** All deployment scripts automatically source `.env.dev`. No manual configuration needed.
 
 ### AWS Resources Deployed
 - **S3 Buckets**: 8 buckets for data storage and UI hosting

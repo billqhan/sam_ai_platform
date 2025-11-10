@@ -14,7 +14,7 @@ s3 = boto3.client('s3')
 lambda_client = boto3.client('lambda')
 
 # Configuration
-BUCKET_PREFIX = os.environ.get('BUCKET_PREFIX', 'l3harris-qhan')
+BUCKET_PREFIX = os.environ['BUCKET_PREFIX']
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
 WEBSITE_BUCKET = f'{BUCKET_PREFIX}-sam-website-{ENVIRONMENT}'
 

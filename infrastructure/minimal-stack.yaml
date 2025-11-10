@@ -9,7 +9,7 @@ Parameters:
   
   BucketPrefix:
     Type: String
-    Default: 'l3harris-qhan'
+  # Default removed; must be provided via parameter or environment
     Description: 'Prefix for S3 bucket names to avoid conflicts'
 
 Resources:

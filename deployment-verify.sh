@@ -16,10 +16,10 @@ NC='\033[0m' # No Color
 
 # Configuration
 STACK_NAME="ai-rfp-response-agent-dev"
-BUCKET_PREFIX="l3harris-qhan"
-REGION="us-east-1"
-ENVIRONMENT="dev"
-CLOUDFRONT_ID="E3QHR30BKR6VGZ"
+BUCKET_PREFIX="${BUCKET_PREFIX:-l3harris-qhan}"
+REGION="${REGION:-us-east-1}"
+ENVIRONMENT="${ENVIRONMENT:-dev}"
+CLOUDFRONT_ID="${CLOUDFRONT_ID:-E3QHR30BKR6VGZ}"
 
 # Logging functions
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
@@ -237,7 +237,7 @@ build_react_ui() {
 deploy_ui_to_cloudfront() {
     log_header "DEPLOYING REACT UI TO CLOUDFRONT"
     
-    local ui_bucket="${BUCKET_PREFIX}-ui-${ENVIRONMENT}"
+    local ui_bucket="${BUCKET_PREFIX}-sam-website-${ENVIRONMENT}"
     
     # Deploy to S3
     log_info "Syncing UI files to S3 bucket: $ui_bucket"

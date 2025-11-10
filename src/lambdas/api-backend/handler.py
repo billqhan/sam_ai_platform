@@ -18,7 +18,7 @@ dynamodb = boto3.resource('dynamodb')
 sqs = boto3.client('sqs')
 
 # Environment variables
-BUCKET_PREFIX = os.environ.get('BUCKET_PREFIX', 'l3harris-qhan')
+BUCKET_PREFIX = os.environ['BUCKET_PREFIX']
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
 
 # Helper functions

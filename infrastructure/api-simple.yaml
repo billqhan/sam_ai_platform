@@ -7,7 +7,7 @@ Parameters:
     Default: dev
   ProjectPrefix:
     Type: String
-    Default: l3harris-qhan
+  # Default removed; must be provided via parameter or environment
   S3Bucket:
     Type: String
   S3Key:

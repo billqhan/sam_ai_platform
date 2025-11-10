@@ -1,7 +1,7 @@
 const AWS = require('aws-sdk');
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 
-const PROPOSALS_TABLE = process.env.PROPOSALS_TABLE || 'l3harris-qhan-sam-proposals-dev';
+const PROPOSALS_TABLE = process.env.PROPOSALS_TABLE;
 
 exports.handler = async (event) => {
     console.log('Proposal service event:', JSON.stringify(event, null, 2));

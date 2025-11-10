@@ -27,9 +27,11 @@ $LambdaFunctions = @(
     "sam-daily-email-notification"
 )
 
-$SourceRoot = "../src/lambdas"
-$SharedDir = "../src/shared"
-$TempRoot = "temp"
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot = Split-Path -Parent $ScriptDir
+$SourceRoot = Join-Path $ProjectRoot "src/lambdas"
+$SharedDir = Join-Path $ProjectRoot "src/shared"
+$TempRoot = Join-Path $ScriptDir "temp"
 
 # Create temp directory
 if (!(Test-Path $TempRoot)) {
@@ -104,7 +106,7 @@ __all__ = ['lambda_handler']
         $RequirementsPath = Join-Path $TempDir "requirements.txt"
         if (Test-Path $RequirementsPath) {
             Write-Host "   Installing dependencies..." -ForegroundColor Blue
-            pip install -r $RequirementsPath -t $TempDir --quiet --no-color
+            pip3 install -r $RequirementsPath -t $TempDir --quiet --no-color
             
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "    Warning: Some dependencies may have failed to install" -ForegroundColor Yellow
@@ -117,17 +119,32 @@ __all__ = ['lambda_handler']
         Write-Host "   Creating deployment package..." -ForegroundColor Blue
         
         # Use PowerShell to create zip
-        $ZipAbsolutePath = (Resolve-Path $TempRoot).Path + "\$FunctionName.zip"
-        Compress-Archive -Path "$TempDir\*" -DestinationPath $ZipAbsolutePath -Force
+        $ZipAbsolutePath = Join-Path (Resolve-Path $TempRoot).Path "$FunctionName.zip"
+        Compress-Archive -Path (Join-Path $TempDir "*") -DestinationPath $ZipAbsolutePath -Force
         
-        Write-Host "   Package created: $ZipFile" -ForegroundColor Green
+        Write-Host "   Package created: $ZipAbsolutePath" -ForegroundColor Green
         
-        # Upload to Lambda
-        Write-Host "    Updating Lambda function..." -ForegroundColor Blue
+        # Upload to S3 first (more reliable for large packages)
+        $S3CodeBucket = if ($env:TEMPLATES_BUCKET) { $env:TEMPLATES_BUCKET } else { "ai-rfp-templates-dev" }
+        $S3CodeKey = "lambda/$FunctionName.zip"
+        
+        Write-Host "    Uploading to S3: s3://$S3CodeBucket/$S3CodeKey" -ForegroundColor Blue
+        aws s3 cp $ZipAbsolutePath "s3://$S3CodeBucket/$S3CodeKey" --region $Region --quiet 2>&1 | Out-Null
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "   Failed to upload to S3: $FunctionName" -ForegroundColor Red
+            $FailCount++
+            $FailedFunctions += $FunctionName
+            continue
+        }
+        
+        # Update Lambda function from S3
+        Write-Host "    Updating Lambda function from S3..." -ForegroundColor Blue
         
         $UpdateResult = aws lambda update-function-code `
             --function-name $LambdaFullName `
-            --zip-file "fileb://$ZipAbsolutePath" `
+            --s3-bucket $S3CodeBucket `
+            --s3-key $S3CodeKey `
             --region $Region `
             --query '{FunctionName:FunctionName,LastModified:LastModified,CodeSize:CodeSize}' `
             --output json 2>&1

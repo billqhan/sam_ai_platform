@@ -3,10 +3,16 @@
 # Deploy All SAM Lambda Functions
 # This script packages and deploys all lambda functions
 
-# Default parameters
-ENVIRONMENT="dev"
-BUCKET_PREFIX="l3harris-qhan"
-REGION="us-east-1"
+
+# Require environment variables to be set (from .env.dev or shell)
+if [ -f "../.env.dev" ]; then
+    source ../.env.dev
+fi
+
+if [[ -z "$ENVIRONMENT" || -z "$BUCKET_PREFIX" || -z "$REGION" ]]; then
+    echo "Error: ENVIRONMENT, BUCKET_PREFIX, and REGION must be set in .env.dev or environment."
+    exit 1
+fi
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -63,7 +69,7 @@ FAIL_COUNT=0
 FAILED_FUNCTIONS=()
 
 for FUNCTION_NAME in "${LAMBDA_FUNCTIONS[@]}"; do
-    LAMBDA_FULL_NAME="${BUCKET_PREFIX}-${FUNCTION_NAME}-${ENVIRONMENT}"
+    LAMBDA_FULL_NAME="${ENVIRONMENT}-${FUNCTION_NAME}-${ENVIRONMENT}"
     SOURCE_DIR="${SOURCE_ROOT}/${FUNCTION_NAME}"
     TEMP_DIR="${TEMP_ROOT}/lambda_package_${FUNCTION_NAME}"
     ZIP_FILE="${TEMP_ROOT}/${FUNCTION_NAME}.zip"
@@ -141,12 +147,27 @@ EOF
     if [[ -f "$ZIP_FILE" ]]; then
         echo "   Package created: $ZIP_FILE"
         
-        # Upload to Lambda
-        echo "    Updating Lambda function..."
+        # Upload to S3 first (more reliable for large packages)
+        S3_CODE_BUCKET="${TEMPLATES_BUCKET:-ai-rfp-templates-dev}"
+        S3_CODE_KEY="lambda/${FUNCTION_NAME}.zip"
+        
+        echo "    Uploading to S3: s3://${S3_CODE_BUCKET}/${S3_CODE_KEY}"
+        aws s3 cp "$ZIP_FILE" "s3://${S3_CODE_BUCKET}/${S3_CODE_KEY}" --region "$REGION" --quiet
+        
+        if [[ $? -ne 0 ]]; then
+            echo "   Failed to upload to S3: $FUNCTION_NAME"
+            ((FAIL_COUNT++))
+            FAILED_FUNCTIONS+=("$FUNCTION_NAME")
+            continue
+        fi
+        
+        # Update Lambda function from S3
+        echo "    Updating Lambda function from S3..."
         
         UPDATE_RESULT=$(aws lambda update-function-code \
             --function-name "$LAMBDA_FULL_NAME" \
-            --zip-file "fileb://${ZIP_FILE}" \
+            --s3-bucket "$S3_CODE_BUCKET" \
+            --s3-key "$S3_CODE_KEY" \
             --region "$REGION" \
             --query '{FunctionName:FunctionName,LastModified:LastModified,CodeSize:CodeSize}' \
             --output json 2>&1)

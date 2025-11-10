@@ -26,6 +26,7 @@ Resources:
   # SQS Queue Policy to allow S3 to send messages
   SqsQueuePolicy:
     Type: AWS::SQS::QueuePolicy
+    DeletionPolicy: Retain
     Properties:
       Queues:
         - !Sub 'https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/${BucketPrefix}-sqs-sam-json-messages-${Environment}'

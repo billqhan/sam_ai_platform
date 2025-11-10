@@ -118,20 +118,37 @@ deploy_java_api_ecs() {
         aws ecr create-repository --repository-name "$repo_name" --region "$REGION"
     fi
     
-    # Build and push Docker image
-    log_info "Building and pushing Docker image..."
-    cd java-api
-    
-    # Get ECR login token
-    aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$aws_account_id.dkr.ecr.$REGION.amazonaws.com"
-    
-    # Build image
-    docker build -t "$repo_name" .
-    
-    # Tag and push
-    local image_uri="$aws_account_id.dkr.ecr.$REGION.amazonaws.com/$repo_name:latest"
-    docker tag "$repo_name:latest" "$image_uri"
-    docker push "$image_uri"
+  # Build and push Docker image (multi-architecture to support amd64 & arm64)
+  log_info "Building and pushing multi-arch Docker image..."
+  cd java-api
+
+  # Get ECR login token
+  aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$aws_account_id.dkr.ecr.$REGION.amazonaws.com"
+
+  # Define image URI early for buildx push
+  local image_uri="$aws_account_id.dkr.ecr.$REGION.amazonaws.com/$repo_name:latest"
+
+  # Ensure Buildx builder exists
+  if ! docker buildx inspect multiarch >/dev/null 2>&1; then
+    log_info "Creating docker buildx builder 'multiarch'"
+    docker buildx create --name multiarch --driver docker-container --use
+  else
+    docker buildx use multiarch
+  fi
+
+  # Warm up QEMU emulators (optional informative step)
+  docker run --rm --privileged tonistiigi/binfmt --install all >/dev/null 2>&1 || true
+
+  # Multi-platform build & push directly to ECR (manifest list)
+  log_info "Executing buildx build for platforms linux/amd64,linux/arm64"
+  docker buildx build \
+    --platform linux/amd64,linux/arm64 \
+    --progress plain \
+    -t "$image_uri" \
+    --push . || { log_error "Multi-arch build failed"; exit 1; }
+
+  # NOTE: If this fails due to BuildKit restrictions, you can fallback:
+  # docker build -t "$repo_name" . && docker tag "$repo_name:latest" "$image_uri" && docker push "$image_uri" (will be single-arch only)
     
     cd ..
     
@@ -226,6 +243,7 @@ EOF
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "1024",
   "memory": "2048",
+  "runtimePlatform": {"cpuArchitecture": "X86_64", "operatingSystemFamily": "LINUX"},
   "executionRoleArn": "$execution_role_arn",
   "taskRoleArn": "$task_role_arn",
   "containerDefinitions": [

@@ -44,16 +44,9 @@ A Java Spring Boot REST API service that provides comprehensive endpoints for th
 3. **Run the application**:
    ```bash
    mvn spring-boot:run
-   ```
-
-4. **Access the API**:
-   - Base URL: http://localhost:8080/api
    - Health check: http://localhost:8080/api/health
    - Swagger UI: http://localhost:8080/api/swagger-ui.html (if enabled)
 
-### Docker Development
-
-1. **Build and run with Docker Compose**:
    ```bash
    docker-compose up --build
    ```
@@ -75,9 +68,6 @@ A Java Spring Boot REST API service that provides comprehensive endpoints for th
 - `GET /opportunities` - List opportunities with pagination and filtering
 - `GET /opportunities/{id}` - Get specific opportunity details
 - `GET /opportunities/search` - Search opportunities
-- `GET /opportunities/categories` - Get available categories
-- `GET /opportunities/agencies` - Get available agencies
-
 ### Proposals
 - `GET /proposals` - List proposals with pagination
 - `GET /proposals/{id}` - Get specific proposal
@@ -164,6 +154,70 @@ docker run -p 8080:8080 l3harris/rfp-response-agent-api:1.0.0
 2. **AWS EKS**: Kubernetes deployment
 3. **AWS Elastic Beanstalk**: Platform-as-a-Service
 4. **AWS EC2**: Direct instance deployment
+
+### Multi-Architecture Container Builds (Apple Silicon + ECS AMD64)
+
+The ECS service expects an image that includes a linux/amd64 descriptor. When building from an Apple Silicon (arm64) Mac, a single-arch image will cause `CannotPullContainerError: image manifest does not contain a descriptor for platform (linux/amd64)`.
+
+Use the enhanced build script:
+
+```bash
+cd java-api
+# Build only the JAR
+./build.sh
+
+# Build local single-arch Docker image (for local use)
+./build.sh --local
+
+# Build & push multi-arch image to ECR (linux/amd64, linux/arm64)
+./build.sh --dockerx --skip-tests
+```
+
+The multi-arch build script will:
+- Ensure the ECR repo exists (`<BUCKET_PREFIX>-rfp-java-api`)
+- Create / select a `docker buildx` builder named `multiarch`
+- Push a manifest list tagged `:latest`
+
+ECS Task Definition runtimePlatform (already set in `deploy-complete.sh`):
+```json
+"runtimePlatform": { "cpuArchitecture": "X86_64", "operatingSystemFamily": "LINUX" }
+```
+
+If you temporarily need to force amd64 locally (without multi-arch push):
+```bash
+docker build --platform linux/amd64 -t rfp-api:amd64 .
+```
+
+### ECS Deployment Flow
+
+1. Run: `./deploy-complete.sh java-api`
+2. Script builds & pushes multi-arch image (if not already) and registers new task definition
+3. ECS service is updated with `--force-new-deployment`
+4. Retrieve public IP:
+   ```bash
+   CLUSTER="dev-ecs-cluster" # or ${BUCKET_PREFIX}-ecs-cluster
+   SERVICE="dev-java-api-service" # or ${BUCKET_PREFIX}-java-api-service
+   TASK_ARN=$(aws ecs list-tasks --cluster "$CLUSTER" --service-name "$SERVICE" --query 'taskArns[0]' --output text)
+   ENI=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text)
+   aws ec2 describe-network-interfaces --network-interface-ids "$ENI" --query 'NetworkInterfaces[0].Association.PublicIp' --output text
+   ```
+
+### Troubleshooting ECS Pulls
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| CannotPullContainerError (no amd64 descriptor) | Built image only for arm64 | Rebuild with `./build.sh --dockerx` |
+| Stuck in PENDING | No public subnets or security group rules | Ensure assignPublicIp=ENABLED & SG allows 8080/tcp |
+| Health check failing | App not ready or wrong path | Confirm `/api/health` returns 200 |
+| Old task definitions piling up | Frequent deploys | Deregister periodically (script already cleans on request) |
+
+### Hardening / Next Steps (Optional)
+- Add ALB + target group for stable DNS + health routing
+- Add AWS WAF on ALB
+- Externalize config via SSM Parameter Store or Secrets Manager
+- Implement structured JSON logging shipped to CloudWatch Logs Insights
+- Add OpenAPI auto-generation & Swagger UI (if not already enabled)
+- Introduce CI pipeline (GitHub Actions) for build/test/push/deploy
 
 ## 📊 Monitoring & Observability
 

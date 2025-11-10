@@ -159,3 +159,15 @@ For detailed troubleshooting, see `../docs/troubleshooting/` directory.
 - Enables fully automated workflow: Download → Process → Match → Reports
 
 **Note**: Run this after initial deployment if S3 notifications are not configured.
+
+#### CloudFormation rollback on S3 notifications (FYI)
+
+If you previously deployed `infrastructure/cloudformation/s3-event-notifications.yaml` and see a stack in `UPDATE_ROLLBACK_COMPLETE` with errors like:
+
+- `AWS::SQS::QueuePolicy DELETE_FAILED: Last applied policy cannot be deleted. Please delete other policies applied to this resource before deleting the last applied policy.`
+
+This is benign for runtime and caused by CloudFormation attempting to delete or replace an SQS queue policy while another policy existed. We resolved this by deleting the obsolete stack and keeping the working policy/configuration in place. Going forward:
+
+- Prefer the manual script (`configure-s3-notifications.sh`) for reliability.
+- The template now marks the `SqsQueuePolicy` with `DeletionPolicy: Retain` to avoid breaking S3→SQS if the stack is deleted.
+- If you do re-enable the CloudFormation template, make sure no external queue policy writers are competing (console/CLI/other stacks).

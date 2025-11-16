@@ -107,7 +107,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub '${BucketPrefix}-opportunity-processing-${Environment}'
-      VisibilityTimeoutSeconds: 300
+      VisibilityTimeout: 300
       MessageRetentionPeriod: 1209600
 
   # SQS Queue for match processing
@@ -115,7 +115,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub '${BucketPrefix}-match-processing-${Environment}'
-      VisibilityTimeoutSeconds: 300
+      VisibilityTimeout: 300
       MessageRetentionPeriod: 1209600
 
 Outputs:

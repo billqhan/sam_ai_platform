@@ -230,6 +230,56 @@ def get_matches_data(target_date: Optional[str] = None):
         print(f"Error getting matches data: {str(e)}")
         return {'count': 0, 'items': []}
 
+def generate_opportunities_section(opportunities, opportunities_count):
+    """Generate the all opportunities table section"""
+    if not opportunities:
+        return ""
+    
+    rows_html = ""
+    for opp in opportunities:
+        title = opp.get('title', 'Unknown')
+        agency = opp.get('agency', 'Unknown')
+        opp_type = opp.get('type', 'Unknown')
+        date = opp.get('date', 'Unknown')
+        rows_html += f"""
+                            <tr>
+                                <td>{title}</td>
+                                <td>{agency}</td>
+                                <td>{opp_type}</td>
+                                <td>{date}</td>
+                            </tr>"""
+    
+    return f'''
+    <div class="card mb-3">
+        <div class="card-header bg-secondary text-white d-flex justify-content-between" 
+             data-bs-toggle="collapse" data-bs-target="#collapse-all-opportunities" style="cursor:pointer;">
+            <h3 class="mb-0">📋 All Opportunities 
+                <span class="badge bg-light text-dark ms-2">{len(opportunities)} loaded (of {opportunities_count} total)</span>
+            </h3>
+            <i class="bi bi-chevron-down"></i>
+        </div>
+        <div id="collapse-all-opportunities" class="collapse">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Agency</th>
+                                <th>Type</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows_html}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    '''
+
 def generate_dashboard_html(date_display, opportunities_count, matches_count, opportunities, matches, report_type="daily", compact_timestamp=None):
     """Generate the dashboard HTML content matching the existing summary format"""
     
@@ -438,6 +488,9 @@ def generate_dashboard_html(date_display, opportunities_count, matches_count, op
     </div>
 
     {score_sections_html if score_sections_html else '<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No matching opportunities found in the analyzed data.</div>'}
+
+    <!-- All Opportunities Section -->
+    {generate_opportunities_section(opportunities, opportunities_count)}
 
 </div>
 

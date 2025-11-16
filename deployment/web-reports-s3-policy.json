@@ -1,0 +1,40 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::dev-sam-matching-out-runs-dev",
+        "arn:aws:s3:::dev-sam-matching-out-runs-dev/*"
+      ],
+      "Effect": "Allow"
+    },
+    {
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::dev-sam-extracted-json-resources-dev",
+        "arn:aws:s3:::dev-sam-extracted-json-resources-dev/*"
+      ],
+      "Effect": "Allow"
+    },
+    {
+      "Action": [
+        "s3:PutObject",
+        "s3:PutObjectAcl",
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::dev-sam-website-dev",
+        "arn:aws:s3:::dev-sam-website-dev/*"
+      ],
+      "Effect": "Allow"
+    }
+  ]
+}

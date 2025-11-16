@@ -319,6 +319,19 @@ Resources:
                     - !Sub 'arn:aws:s3:::sam-matching-out-runs-${Environment}/*'
               - Effect: Allow
                 Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-extracted-json-resources-${Environment}'
+                    - !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}'
+                  - !If 
+                    - HasBucketPrefix
+                    - !Sub 'arn:aws:s3:::${BucketPrefix}-sam-extracted-json-resources-${Environment}/*'
+                    - !Sub 'arn:aws:s3:::sam-extracted-json-resources-${Environment}/*'
+              - Effect: Allow
+                Action:
                   - s3:PutObject
                   - s3:PutObjectAcl
                   - s3:GetObject
@@ -583,6 +596,8 @@ Resources:
         Mode: Active
       Environment:
         Variables:
+          BUCKET_PREFIX: !Ref BucketPrefix
+          ENVIRONMENT: !Ref Environment
           WEBSITE_BUCKET: !If 
             - HasBucketPrefix
             - !Sub '${BucketPrefix}-sam-website-${Environment}'

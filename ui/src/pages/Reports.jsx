@@ -107,23 +107,25 @@ export default function Reports() {
     console.log('handleViewReport called with:', report)
     
     try {
-      // Let's try to fetch the report first to see what we get
-      console.log('Fetching report from API...')
+      // Fetch the report HTML from API
       const response = await api.get(`/reports/${report.id}/view`)
-      console.log('API response:', response)
       
-      // Check if it's HTML content
-      if (response.headers['content-type']?.includes('text/html')) {
-        // Create a blob with HTML content and open it
+      // Check if response contains HTML (string starting with <!DOCTYPE or <html)
+      if (typeof response.data === 'string' && 
+          (response.data.trim().startsWith('<!DOCTYPE') || response.data.trim().startsWith('<html'))) {
+        // Create a blob with HTML content and open in new tab
         const blob = new Blob([response.data], { type: 'text/html' })
         const url = window.URL.createObjectURL(blob)
         window.open(url, '_blank')
+        // Clean up the blob URL after opening
         setTimeout(() => window.URL.revokeObjectURL(url), 1000)
       } else {
-        // For other content types, try direct URL
-        const reportViewUrl = `${import.meta.env.VITE_API_BASE_URL}/reports/${report.id}/view`
-        console.log('Opening direct URL:', reportViewUrl)
-        window.open(reportViewUrl, '_blank')
+        // Fallback: try the downloadUrl
+        if (report.downloadUrl) {
+          window.open(report.downloadUrl, '_blank')
+        } else {
+          alert('Report format not recognized')
+        }
       }
       
     } catch (error) {
@@ -131,7 +133,6 @@ export default function Reports() {
       
       // Fallback: try the downloadUrl instead
       if (report.downloadUrl) {
-        console.log('Trying download URL as fallback:', report.downloadUrl)
         window.open(report.downloadUrl, '_blank')
       } else {
         alert('Unable to open report: ' + error.message)

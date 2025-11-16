@@ -85,6 +85,13 @@ Resources:
                 - !Sub 'arn:aws:s3:::${ProjectPrefix}-*/*'
                 - 'arn:aws:s3:::sam-*'
                 - 'arn:aws:s3:::sam-*/*'
+            # Allow SQS access
+            - Effect: Allow
+              Action:
+                - sqs:GetQueueUrl
+                - sqs:SendMessage
+                - sqs:GetQueueAttributes
+              Resource: !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${ProjectPrefix}-sqs-*'
             # Allow CloudWatch Logs
             - Effect: Allow
               Action:
@@ -144,6 +151,13 @@ Resources:
             RestApiId: !Ref RfpApiGateway
             Path: /matches/{id}
             Method: GET
+        
+        TriggerMatching:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RfpApiGateway
+            Path: /matches/trigger
+            Method: POST
         
         # Workflow endpoints
         TriggerWorkflow:

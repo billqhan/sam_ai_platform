@@ -1,0 +1,130 @@
+// Lambda Functions Deployment Pipeline
+// Deploys all Python Lambda functions
+
+pipeline {
+    agent {
+        docker {
+            image 'python:3.11'
+            args '-v /var/run/docker.sock:/var/run/docker.sock'
+        }
+    }
+    
+    environment {
+        AWS_REGION = 'us-east-1'
+        ENVIRONMENT = 'dev'
+        BUCKET_PREFIX = 'dev'
+    }
+    
+    parameters {
+        choice(
+            name: 'LAMBDA_FUNCTION',
+            choices: [
+                'all',
+                'sam-gov-daily-download',
+                'sam-json-processor',
+                'sam-sqs-generate-match-reports',
+                'sam-produce-user-report',
+                'sam-produce-web-reports',
+                'sam-merge-and-archive-result-logs',
+                'sam-daily-email-notification'
+            ],
+            description: 'Select Lambda function to deploy'
+        )
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        timestamps()
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Install Dependencies') {
+            steps {
+                sh 'pip install --upgrade pip boto3 awscli'
+            }
+        }
+        
+        stage('Validate Lambda Code') {
+            steps {
+                dir('src/lambdas') {
+                    sh '''
+                        for dir in */; do
+                            if [ -f "$dir/handler.py" ] || [ -f "$dir/lambda_function.py" ]; then
+                                echo "Validating $dir..."
+                                python -m py_compile "$dir"/*.py || true
+                            fi
+                        done
+                    '''
+                }
+            }
+        }
+        
+        stage('Deploy Lambda Functions') {
+            steps {
+                withAWS(credentials: 'aws-credentials', region: env.AWS_REGION) {
+                    dir('deployment') {
+                        sh 'chmod +x deploy-all-lambdas.sh'
+                        script {
+                            if (params.LAMBDA_FUNCTION == 'all') {
+                                sh './deploy-all-lambdas.sh'
+                            } else {
+                                sh """
+                                    export ENVIRONMENT=${ENVIRONMENT}
+                                    export BUCKET_PREFIX=${BUCKET_PREFIX}
+                                    export REGION=${AWS_REGION}
+                                    
+                                    FUNCTION_NAME="${params.LAMBDA_FUNCTION}"
+                                    LAMBDA_FULL_NAME="\${BUCKET_PREFIX}-\${FUNCTION_NAME}-\${ENVIRONMENT}"
+                                    SOURCE_DIR="../src/lambdas/\${FUNCTION_NAME}"
+                                    
+                                    cd "\$SOURCE_DIR"
+                                    zip -r /tmp/lambda.zip .
+                                    
+                                    aws lambda update-function-code \
+                                        --function-name "\$LAMBDA_FULL_NAME" \
+                                        --zip-file fileb:///tmp/lambda.zip \
+                                        --region ${AWS_REGION}
+                                """
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Test Lambda Functions') {
+            steps {
+                withAWS(credentials: 'aws-credentials', region: env.AWS_REGION) {
+                    sh '''
+                        # Test API backend Lambda
+                        aws lambda invoke \
+                            --function-name dev-sam-api-backend-dev \
+                            --payload '{"httpMethod":"GET","path":"/health"}' \
+                            /tmp/response.json \
+                            --region us-east-1
+                        
+                        cat /tmp/response.json
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo "✅ Lambda deployment successful!"
+        }
+        failure {
+            echo "❌ Lambda deployment failed"
+        }
+        always {
+            cleanWs()
+        }
+    }
+}

@@ -1,0 +1,107 @@
+// UI (React) Deployment Pipeline
+// Fast deployment for frontend-only changes
+
+pipeline {
+    agent {
+        docker {
+            image 'node:18'
+            args '-v $HOME/.npm:/root/.npm'
+        }
+    }
+    
+    environment {
+        AWS_REGION = 'us-east-1'
+        S3_BUCKET = 'dev-sam-website-dev'
+        CLOUDFRONT_DISTRIBUTION = 'EZ3JUM700S8C6'
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        timestamps()
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Install Dependencies') {
+            steps {
+                dir('ui') {
+                    sh 'npm ci'
+                }
+            }
+        }
+        
+        stage('Lint') {
+            steps {
+                dir('ui') {
+                    sh 'npm run lint || true'
+                }
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                dir('ui') {
+                    sh 'npm run build'
+                }
+            }
+        }
+        
+        stage('Deploy to S3') {
+            steps {
+                withAWS(credentials: 'aws-credentials', region: env.AWS_REGION) {
+                    dir('ui/dist') {
+                        sh """
+                            aws s3 sync . s3://${S3_BUCKET}/ \
+                                --delete \
+                                --cache-control 'max-age=31536000,public' \
+                                --exclude 'index.html'
+                            
+                            aws s3 cp index.html s3://${S3_BUCKET}/index.html \
+                                --cache-control 'max-age=0,no-cache,no-store,must-revalidate'
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Invalidate CloudFront') {
+            steps {
+                withAWS(credentials: 'aws-credentials', region: env.AWS_REGION) {
+                    sh """
+                        aws cloudfront create-invalidation \
+                            --distribution-id ${CLOUDFRONT_DISTRIBUTION} \
+                            --paths '/*' \
+                            --output json
+                    """
+                }
+            }
+        }
+        
+        stage('Verify Deployment') {
+            steps {
+                sh '''
+                    sleep 10
+                    curl -f https://d8bbmb3a6jev2.cloudfront.net/ || exit 1
+                    echo "✅ UI deployment verified"
+                '''
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo '✅ UI deployed successfully!'
+        }
+        failure {
+            echo '❌ UI deployment failed'
+        }
+        always {
+            cleanWs()
+        }
+    }
+}

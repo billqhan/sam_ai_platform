@@ -83,17 +83,7 @@ aws s3api put-bucket-notification-configuration \
     "LambdaFunctionConfigurations": [
       {
         "LambdaFunctionArn": "arn:aws:lambda:'$REGION':160936122037:function:dev-sam-produce-user-report-'$ENV'",
-        "Events": ["s3:ObjectCreated:*"],
-        "Filter": {
-          "Key": {
-            "FilterRules": [
-              {
-                "Name": "prefix",
-                "Value": "matches_"
-              }
-            ]
-          }
-        }
+        "Events": ["s3:ObjectCreated:*"]
       }
     ]
   }'

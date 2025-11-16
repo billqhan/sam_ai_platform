@@ -52,7 +52,9 @@ function Update-LambdaFunction {
     
     # Check if function exists
     try {
-        aws lambda get-function --function-name $FullFunctionName --region us-east-1 | Out-Null
+        $awsFlags = @('--region','us-east-1')
+        if ($env:AWS_INSECURE_SSL -eq 'true') { $awsFlags += '--no-verify-ssl' }
+        aws lambda get-function --function-name $FullFunctionName @awsFlags | Out-Null
         if ($LASTEXITCODE -ne 0) {
             Write-Host "[WARNING] Function $FullFunctionName not found, skipping..." -ForegroundColor Yellow
             return
@@ -73,18 +75,22 @@ function Update-LambdaFunction {
     # Update Lambda function code
     Write-Host "[INFO] Updating Lambda function code: $FullFunctionName" -ForegroundColor Blue
     
+    $awsFlags = @('--region','us-east-1')
+    if ($env:AWS_INSECURE_SSL -eq 'true') { $awsFlags += '--no-verify-ssl' }
     aws lambda update-function-code `
         --function-name $FullFunctionName `
         --s3-bucket $TemplatesBucket `
         --s3-key $PackageResult.S3Key `
-        --region us-east-1
+        @awsFlags
     
     if ($LASTEXITCODE -eq 0) {
         Write-Host "[SUCCESS] Updated $FullFunctionName successfully!" -ForegroundColor Green
         
         # Wait for update to complete
         Write-Host "[INFO] Waiting for function update to complete..." -ForegroundColor Blue
-        aws lambda wait function-updated --function-name $FullFunctionName --region us-east-1
+        $awsFlags = @('--region','us-east-1')
+        if ($env:AWS_INSECURE_SSL -eq 'true') { $awsFlags += '--no-verify-ssl' }
+        aws lambda wait function-updated --function-name $FullFunctionName @awsFlags
         
         if ($LASTEXITCODE -eq 0) {
             Write-Host "[SUCCESS] Function update completed!" -ForegroundColor Green

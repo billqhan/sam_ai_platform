@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Attach required Lambda permissions to existing API backend role (patch)'
+
+Parameters:
+  RoleName:
+    Type: String
+    Description: 'Existing IAM Role name for API backend (e.g., dev-rfp-api-gateway-ApiBackendRole-xxxx)'
+  ProjectPrefix:
+    Type: String
+    Description: 'Prefix for resource naming (e.g., dev)'
+  Environment:
+    Type: String
+    AllowedValues: ['dev', 'staging', 'prod']
+    Description: 'Environment name'
+
+Resources:
+  ApiBackendLambdaPermissions:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: ApiBackendLambdaPermissions
+      Roles:
+        - !Ref RoleName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+              - lambda:GetFunction
+            Resource:
+              - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectPrefix}-sam-*'
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: '*'
+
+Outputs:
+  AttachedPolicyName:
+    Description: 'Policy attached to the API backend role'
+    Value: !Ref ApiBackendLambdaPermissions

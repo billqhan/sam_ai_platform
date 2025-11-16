@@ -1,46 +1,28 @@
 # Multi-stage build for Java Spring Boot application
-FROM amazoncorretto:21-alpine AS builder
-
-# Install Maven
-RUN apk add --no-cache maven
+# Builder uses Maven with Corretto 21 preinstalled to avoid apk issues
+FROM maven:3.9-amazoncorretto-21 AS builder
 
 # Set working directory
 WORKDIR /app
 
-# Copy Maven files for dependency resolution
+# Copy project files and build
 COPY pom.xml .
 COPY src ./src
 
-# Build the application
-RUN mvn clean package -DskipTests
+# Build the application (skip tests for faster image builds)
+RUN mvn -B clean package -DskipTests
 
-# Runtime stage
-FROM amazoncorretto:21-alpine
-
-# Install required packages
-RUN apk add --no-cache curl bash
-
-# Create application user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+# Runtime stage (Debian-based Corretto to avoid apk)
+FROM amazoncorretto:21
 
 # Set working directory
 WORKDIR /app
 
 # Copy the built JAR from builder stage
-COPY --from=builder /app/target/rfp-response-agent-api-*.jar app.jar
-
-# Change ownership to app user
-RUN chown -R appuser:appgroup /app
-
-# Switch to non-root user
-USER appuser
+COPY --from=builder /app/target/rfp-response-agent-api-*.jar /app/app.jar
 
 # Expose port
 EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:8080/api/actuator/health || exit 1
 
 # JVM optimization for containers
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+UseStringDeduplication"

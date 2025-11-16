@@ -44,6 +44,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - lambda:InvokeFunction
+                  - lambda:GetFunction
                 Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectPrefix}-sam-*'
               - Effect: Allow
                 Action:
@@ -70,6 +71,7 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           PROJECT_PREFIX: !Ref ProjectPrefix
+          BUCKET_PREFIX: !Ref ProjectPrefix
 
   LambdaApiPermission:
     Type: AWS::Lambda::Permission

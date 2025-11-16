@@ -66,7 +66,9 @@ try {
     $S3Key = "$S3KeyPrefix/$LambdaName.zip"
     Write-Host "[INFO] Uploading to S3: s3://$S3Bucket/$S3Key" -ForegroundColor Blue
     
-    aws s3 cp $ZipFile "s3://$S3Bucket/$S3Key"
+    $awsFlags = @()
+    if ($env:AWS_INSECURE_SSL -eq 'true') { $awsFlags += '--no-verify-ssl' }
+    aws s3 cp $ZipFile "s3://$S3Bucket/$S3Key" @awsFlags
     
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[ERROR] Failed to upload to S3" -ForegroundColor Red

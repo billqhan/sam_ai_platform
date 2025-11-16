@@ -1,0 +1,263 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sam-ai
+  labels:
+    name: sam-ai
+    environment: dev
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sam-ai-java-api
+  namespace: sam-ai
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::160936122037:role/dev-sam-ai-java-api
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: java-api-config
+  namespace: sam-ai
+data:
+  SPRING_PROFILES_ACTIVE: "aws,eks"
+  AWS_REGION: "us-east-1"
+  ENVIRONMENT: "dev"
+  BUCKET_PREFIX: "dev"
+  # S3 Buckets
+  SAM_DATA_IN_BUCKET: "dev-sam-data-in-dev"
+  SAM_EXTRACTED_JSON_BUCKET: "dev-sam-extracted-json-resources-dev"
+  SAM_MATCHING_OUT_SQS_BUCKET: "dev-sam-matching-out-sqs-dev"
+  SAM_MATCHING_OUT_RUNS_BUCKET: "dev-sam-matching-out-runs-dev"
+  SAM_OPPORTUNITY_RESPONSES_BUCKET: "dev-sam-opportunity-responses-dev"
+  SAM_WEBSITE_BUCKET: "dev-sam-website-dev"
+  SAM_COMPANY_INFO_BUCKET: "dev-sam-company-info-dev"
+  # Lambda Functions
+  DOWNLOAD_LAMBDA: "dev-sam-gov-daily-download-dev"
+  PROCESSOR_LAMBDA: "dev-sam-json-processor-dev"
+  MATCH_LAMBDA: "dev-sam-sqs-generate-match-reports-dev"
+  WEB_REPORT_LAMBDA: "dev-sam-produce-web-reports-dev"
+  USER_REPORT_LAMBDA: "dev-sam-produce-user-report-dev"
+  EMAIL_LAMBDA: "dev-sam-daily-email-notification-dev"
+  # SQS Queues
+  SQS_QUEUE: "dev-sqs-sam-json-messages-dev"
+  DLQ_QUEUE: "dev-sqs-sam-json-messages-dlq-dev"
+  # Company Info
+  COMPANY_NAME: "L3Harris"
+  # Bedrock
+  MODEL_ID_DESC: "amazon.nova-pro-v1:0"
+  MODEL_ID_MATCH: "amazon.nova-pro-v1:0"
+  BEDROCK_REGION: "us-east-1"
+  # Server Config
+  SERVER_PORT: "8080"
+  MANAGEMENT_SERVER_PORT: "8081"
+  MANAGEMENT_ENDPOINTS_WEB_BASE_PATH: "/actuator"
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,metrics,prometheus"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: java-api-secrets
+  namespace: sam-ai
+type: Opaque
+stringData:
+  SAM_API_KEY: "SAM-95a93ccd-9d79-41be-a0a5-0e01ef13a75a"
+  COMPANY_CONTACT: "bill.han@l3harris.com"
+  EMAIL_FROM: "bill.han@l3harris.com"
+  EMAIL_TO: "bill.han@l3harris.com"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-api
+  namespace: sam-ai
+  labels:
+    app: java-api
+    version: v1
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: java-api
+  template:
+    metadata:
+      labels:
+        app: java-api
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: sam-ai-java-api
+      containers:
+      - name: java-api
+        image: 160936122037.dkr.ecr.us-east-1.amazonaws.com/sam-ai-java-api:dev-latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: actuator
+          containerPort: 8081
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: java-api-config
+        - secretRef:
+            name: java-api-secrets
+        env:
+        - name: JAVA_OPTS
+          value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+UseStringDeduplication -Djava.security.egd=file:/dev/./urandom"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: actuator
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: actuator
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /actuator/health
+            port: actuator
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 30
+      tolerations:
+      - key: "spot"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - java-api
+              topologyKey: topology.kubernetes.io/zone
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: java-api
+  namespace: sam-ai
+  labels:
+    app: java-api
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+spec:
+  type: LoadBalancer
+  selector:
+    app: java-api
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  - name: actuator
+    port: 8081
+    targetPort: actuator
+    protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: java-api-internal
+  namespace: sam-ai
+  labels:
+    app: java-api
+spec:
+  type: ClusterIP
+  selector:
+    app: java-api
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+    protocol: TCP
+  - name: actuator
+    port: 8081
+    targetPort: actuator
+    protocol: TCP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: java-api-hpa
+  namespace: sam-ai
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: java-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+      - type: Pods
+        value: 2
+        periodSeconds: 30
+      selectPolicy: Max
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: java-api-pdb
+  namespace: sam-ai
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: java-api

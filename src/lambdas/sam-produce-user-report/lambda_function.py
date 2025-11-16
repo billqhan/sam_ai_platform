@@ -802,6 +802,94 @@ Match Score: {json_data.get('score', 'N/A')}
                     }
                 )
                 logger.info(f"Saved RTF response template (Word-compatible): {rtf_filename}")
+
+                # --- Save as HTML ---
+                if "html" in formats:
+                        # Build a lightweight, styled HTML page and render the markdown client-side using marked.js
+                        solicitation_number = json_data.get('solicitationNumber', 'UNKNOWN')
+                        title = json_data.get('title', 'Unknown Title')
+                        agency = json_data.get('fullParentPathName', 'Unknown Agency')
+                        score = json_data.get('score', 'N/A')
+                        ui_link = json_data.get('uiLink', '')
+
+                        # Escape for embedding in <script type="text/plain"> safely
+                        def html_escape(s):
+                                return (s or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+                        md_payload = html_escape(response_content)
+                        generated_ts = timestamp
+
+                        html_body = f"""<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"UTF-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+    <title>{solicitation_number} Response Template</title>
+    <link href=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css\" rel=\"stylesheet\"> 
+    <link href=\"https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css\" rel=\"stylesheet\">
+    <style>
+        body {{ background:#f8f9fa; }}
+        .card-header-gradient {{ background: linear-gradient(135deg,#0d6efd 0%,#6610f2 100%); }}
+        .md-content h2, .md-content h3, .md-content h4 {{ margin-top:1rem; }}
+        .md-content p {{ margin-bottom:0.6rem; }}
+        .badge-meta {{ font-size:0.9rem; }}
+    </style>
+    <script src=\"https://cdn.jsdelivr.net/npm/marked/marked.min.js\"></script>
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {{
+            const raw = document.getElementById('md-source').textContent;
+            const html = marked.parse(raw);
+            document.getElementById('rendered').innerHTML = html;
+        }});
+    </script>
+    <meta name=\"generator\" content=\"sam-produce-user-report\" />
+    <meta name=\"generated-timestamp\" content=\"{generated_ts}\" />
+    <meta name=\"solicitation-number\" content=\"{solicitation_number}\" />
+    <meta name=\"match-score\" content=\"{score}\" />
+    <meta name=\"agency\" content=\"{agency}\" />
+    <meta name=\"title\" content=\"{title}\" />
+    {f'<link rel="canonical" href="{ui_link}" />' if ui_link else ''}
+    </head>
+<body>
+<div class=\"container py-4\">
+    <div class=\"card shadow-sm mb-4\">
+        <div class=\"card-header text-white card-header-gradient\">
+            <h2 class=\"h4 mb-0\"><i class=\"bi bi-file-text me-2\"></i>Response Template for {solicitation_number}</h2>
+        </div>
+        <div class=\"card-body\">
+            <div class=\"d-flex flex-wrap gap-2 mb-3\">
+                <span class=\"badge text-bg-primary badge-meta\">Solicitation: {solicitation_number}</span>
+                <span class=\"badge text-bg-secondary badge-meta\">Agency: {agency}</span>
+                <span class=\"badge text-bg-info text-dark badge-meta\">Score: {score}</span>
+            </div>
+            <p class=\"text-muted mb-1\"><strong>Title:</strong> {title}</p>
+            {f'<p class="mb-3"><a class="btn btn-outline-primary btn-sm" target="_blank" href="{ui_link}"><i class="bi bi-box-arrow-up-right"></i> View on SAM.gov</a></p>' if ui_link else ''}
+            <div id=\"rendered\" class=\"md-content\"></div>
+        </div>
+        <div class=\"card-footer text-muted small\">Generated {generated_ts}</div>
+    </div>
+    <p class=\"text-center text-muted\">This HTML is also available alongside TXT/DOCX in the responses bucket.</p>
+    <script type=\"text/plain\" id=\"md-source\">{md_payload}</script>
+    <script src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js\"></script>
+</div>
+</body>
+</html>"""
+
+                        html_filename = f"{prefix}{output_basename}.html"
+                        s3_client.put_object(
+                                Bucket=DESTINATION_BUCKET,
+                                Key=html_filename,
+                                Body=html_body.encode('utf-8'),
+                                ContentType='text/html',
+                                Metadata={
+                                        'source-file': original_key,
+                                        'solicitation-number': solicitation_number,
+                                        'generated-timestamp': timestamp,
+                                        'match-score': str(json_data.get('score', 'N/A')),
+                                        'model-used': MODEL_ID
+                                }
+                        )
+                        logger.info(f"Saved HTML response template: {html_filename}")
             
     except Exception as e:
         logger.error(f"Error saving to S3: {str(e)}")

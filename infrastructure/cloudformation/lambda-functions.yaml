@@ -529,7 +529,7 @@ Resources:
             - !Sub 'sam-matching-out-sqs-${Environment}'
           AGENT_ID: 'PLACEHOLDER'
           AGENT_ALIAS_ID: 'PLACEHOLDER'
-          OUTPUT_FORMATS: 'txt,docx'
+          OUTPUT_FORMATS: 'txt,docx,html'
           COMPANY_NAME: !Ref CompanyName
           COMPANY_CONTACT: !Ref CompanyContact
           X_AMZN_TRACE_ID: !Sub '${AWS::StackName}-sam-produce-user-report'

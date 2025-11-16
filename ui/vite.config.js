@@ -5,13 +5,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    // Only use proxy if no API_BASE_URL is configured
-    proxy: process.env.VITE_API_BASE_URL ? {} : {
-      '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:4000',
-        changeOrigin: true,
-      }
-    }
+    // No proxy needed - frontend calls API Gateway directly
+    // Vite automatically loads .env.dev file which has VITE_API_BASE_URL
   },
   build: {
     outDir: 'dist',

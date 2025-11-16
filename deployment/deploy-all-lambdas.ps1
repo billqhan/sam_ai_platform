@@ -32,6 +32,44 @@ $ProjectRoot = Split-Path -Parent $ScriptDir
 $SourceRoot = Join-Path $ProjectRoot "src/lambdas"
 $SharedDir = Join-Path $ProjectRoot "src/shared"
 $TempRoot = Join-Path $ScriptDir "temp"
+$AwsFlags = @('--region', $Region)
+if ($env:AWS_INSECURE_SSL -eq 'true') { $AwsFlags += '--no-verify-ssl' }
+# Resolve pip command cross-platform
+function Get-PipCommand {
+    # Try python -m pip first (most reliable)
+    try {
+        if (Get-Command python -ErrorAction SilentlyContinue) {
+            $null = python -m pip --version 2>&1
+            if ($LASTEXITCODE -eq 0) { 
+                return 'python -m pip'
+            }
+        }
+    } catch { }
+    
+    # Fallback to other methods
+    $candidates = @()
+    if (Get-Command pip3 -ErrorAction SilentlyContinue) { $candidates += 'pip3' }
+    if (Get-Command pip  -ErrorAction SilentlyContinue) { $candidates += 'pip' }
+    
+    # Explicit Python paths (common installs)
+    $py314Local = "$env:LOCALAPPDATA\Programs\Python\Python314\python.exe"
+    $py314User  = Join-Path $env:USERPROFILE 'AppData\Local\Programs\Python\Python314\python.exe'
+    $pythonPaths = @($py314Local, $py314User) | Where-Object { $_ -and (Test-Path $_) }
+    foreach ($p in $pythonPaths) { $candidates += "`"$p`" -m pip" }
+    
+    foreach ($cmd in $candidates) {
+        try {
+            $null = & $cmd --version 2>&1
+            if ($LASTEXITCODE -eq 0) { return $cmd }
+        } catch { }
+    }
+    return $null
+}
+
+$PipCmd = Get-PipCommand
+if (-not $PipCmd) {
+    Write-Host "    Warning: pip not found in PATH; dependency installation will be skipped" -ForegroundColor Yellow
+}
 
 # Create temp directory
 if (!(Test-Path $TempRoot)) {
@@ -106,12 +144,17 @@ __all__ = ['lambda_handler']
         $RequirementsPath = Join-Path $TempDir "requirements.txt"
         if (Test-Path $RequirementsPath) {
             Write-Host "   Installing dependencies..." -ForegroundColor Blue
-            pip3 install -r $RequirementsPath -t $TempDir --quiet --no-color
-            
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "    Warning: Some dependencies may have failed to install" -ForegroundColor Yellow
+            if ($PipCmd) {
+                $pipInvocation = "$PipCmd install -r `"$RequirementsPath`" -t `"$TempDir`" --quiet --no-color"
+                Write-Host "     > $pipInvocation" -ForegroundColor DarkGray
+                cmd /c $pipInvocation 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host "    Warning: Some dependencies may have failed to install" -ForegroundColor Yellow
+                } else {
+                    Write-Host "   Dependencies installed" -ForegroundColor Green
+                }
             } else {
-                Write-Host "   Dependencies installed" -ForegroundColor Green
+                Write-Host "    Skipping dependency installation (pip not available)" -ForegroundColor Yellow
             }
         }
         
@@ -129,7 +172,7 @@ __all__ = ['lambda_handler']
         $S3CodeKey = "lambda/$FunctionName.zip"
         
         Write-Host "    Uploading to S3: s3://$S3CodeBucket/$S3CodeKey" -ForegroundColor Blue
-        aws s3 cp $ZipAbsolutePath "s3://$S3CodeBucket/$S3CodeKey" --region $Region --quiet 2>&1 | Out-Null
+        aws s3 cp $ZipAbsolutePath "s3://$S3CodeBucket/$S3CodeKey" @AwsFlags --quiet 2>&1 | Out-Null
         
         if ($LASTEXITCODE -ne 0) {
             Write-Host "   Failed to upload to S3: $FunctionName" -ForegroundColor Red
@@ -141,11 +184,11 @@ __all__ = ['lambda_handler']
         # Update Lambda function from S3
         Write-Host "    Updating Lambda function from S3..." -ForegroundColor Blue
         
-        $UpdateResult = aws lambda update-function-code `
+            $UpdateResult = aws lambda update-function-code `
             --function-name $LambdaFullName `
             --s3-bucket $S3CodeBucket `
             --s3-key $S3CodeKey `
-            --region $Region `
+                @AwsFlags `
             --query '{FunctionName:FunctionName,LastModified:LastModified,CodeSize:CodeSize}' `
             --output json 2>&1
         
@@ -163,7 +206,7 @@ __all__ = ['lambda_handler']
             }
         } else {
             Write-Host "   Failed to deploy: $FunctionName" -ForegroundColor Red
-            Write-Host "     Error: $UpdateResult" -ForegroundColor Red
+                Write-Host "     Error: $UpdateResult" -ForegroundColor Red
             $FailCount++
             $FailedFunctions += $FunctionName
         }

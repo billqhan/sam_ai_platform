@@ -265,7 +265,7 @@ export default function Workflow() {
     },
   ]
 
-  const displayHistory = workflowHistory || mockHistory
+  const displayHistory = Array.isArray(workflowHistory) ? workflowHistory : mockHistory
 
   return (
     <div className="p-6 space-y-6">

@@ -1,0 +1,99 @@
+# Helm chart values for monitoring stack
+# Install with: helm install monitoring prometheus-community/kube-prometheus-stack -f monitoring-values.yaml
+
+# Prometheus configuration
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+    
+    # Service monitor for Java API
+    additionalServiceMonitors:
+    - name: java-api-monitor
+      selector:
+        matchLabels:
+          app: java-api
+      namespaceSelector:
+        matchNames:
+        - sam-ai
+      endpoints:
+      - port: actuator
+        path: /actuator/prometheus
+        interval: 30s
+
+# Grafana configuration
+grafana:
+  enabled: true
+  adminPassword: "changeme"  # Change this!
+  
+  ingress:
+    enabled: true
+    annotations:
+      kubernetes.io/ingress.class: alb
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+    hosts:
+    - grafana.sam-ai.dev.example.com
+  
+  persistence:
+    enabled: true
+    size: 10Gi
+  
+  # Pre-configured dashboards
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+  
+  dashboards:
+    default:
+      spring-boot:
+        gnetId: 12900  # Spring Boot Dashboard
+        revision: 1
+        datasource: Prometheus
+      jvm:
+        gnetId: 4701   # JVM Dashboard
+        revision: 1
+        datasource: Prometheus
+      kubernetes:
+        gnetId: 15760  # Kubernetes Cluster Monitoring
+        revision: 1
+        datasource: Prometheus
+
+# AlertManager configuration
+alertmanager:
+  config:
+    global:
+      resolve_timeout: 5m
+    
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 12h
+      receiver: 'email-notifications'
+    
+    receivers:
+    - name: 'email-notifications'
+      email_configs:
+      - to: 'bill.han@l3harris.com'
+        from: 'alerts@sam-ai.dev'
+        smarthost: 'smtp.gmail.com:587'
+        auth_username: 'your-email@example.com'
+        auth_password: 'your-app-password'
+        headers:
+          Subject: '[SAM AI] {{ .GroupLabels.alertname }}'

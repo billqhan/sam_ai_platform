@@ -72,13 +72,16 @@ function ReportCard({ report, onViewReport }) {
         </div>
         <div className="flex items-center space-x-2">
           {report.viewUrl && (
-            <button 
-              onClick={() => onViewReport(report)} 
-              className="btn btn-secondary"
+            <a 
+              href={report.viewUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="btn btn-secondary inline-flex items-center"
+              style={{ textDecoration: 'none' }}
             >
               <Eye className="w-4 h-4 mr-2" />
               View
-            </button>
+            </a>
           )}
           <a 
             href={report.downloadUrl} 
@@ -103,39 +106,19 @@ export default function Reports() {
   const [pageSize] = useState(20) // Fixed page size
   const queryClient = useQueryClient()
 
-  const handleViewReport = async (report) => {
+  const handleViewReport = (report) => {
     console.log('handleViewReport called with:', report)
     
-    try {
-      // Let's try to fetch the report first to see what we get
-      console.log('Fetching report from API...')
-      const response = await api.get(`/reports/${report.id}/view`)
-      console.log('API response:', response)
-      
-      // Check if it's HTML content
-      if (response.headers['content-type']?.includes('text/html')) {
-        // Create a blob with HTML content and open it
-        const blob = new Blob([response.data], { type: 'text/html' })
-        const url = window.URL.createObjectURL(blob)
-        window.open(url, '_blank')
-        setTimeout(() => window.URL.revokeObjectURL(url), 1000)
-      } else {
-        // For other content types, try direct URL
-        const reportViewUrl = `${import.meta.env.VITE_API_BASE_URL}/reports/${report.id}/view`
-        console.log('Opening direct URL:', reportViewUrl)
-        window.open(reportViewUrl, '_blank')
-      }
-      
-    } catch (error) {
-      console.error('Error viewing report:', error)
-      
-      // Fallback: try the downloadUrl instead
-      if (report.downloadUrl) {
-        console.log('Trying download URL as fallback:', report.downloadUrl)
-        window.open(report.downloadUrl, '_blank')
-      } else {
-        alert('Unable to open report: ' + error.message)
-      }
+    // Use the viewUrl directly (now points to CloudFront)
+    if (report.viewUrl) {
+      console.log('Opening view URL:', report.viewUrl)
+      window.open(report.viewUrl, '_blank')
+    } else if (report.downloadUrl) {
+      console.log('Fallback to download URL:', report.downloadUrl)
+      window.open(report.downloadUrl, '_blank')
+    } else {
+      console.error('No URL available for report:', report)
+      alert('Unable to open report: No URL available')
     }
   }
 
@@ -230,7 +213,7 @@ export default function Reports() {
     emailSent: report.emailSent,
     url: report.viewUrl || report.downloadUrl,
     downloadUrl: report.downloadUrl,
-    viewUrl: `${import.meta.env.VITE_API_BASE_URL}/reports/${report.id}/view`, // Use API proxy for viewing
+    viewUrl: report.viewUrl, // Use the CloudFront URL from API
     size: report.size,
     filename: report.filename
   })) : null;

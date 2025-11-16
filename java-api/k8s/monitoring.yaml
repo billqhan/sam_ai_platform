@@ -1,0 +1,82 @@
+# ServiceMonitor for Java API metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: java-api
+  namespace: sam-ai
+  labels:
+    app: java-api
+    release: monitoring  # Must match Prometheus release name
+spec:
+  selector:
+    matchLabels:
+      app: java-api
+  endpoints:
+  - port: actuator
+    path: /actuator/prometheus
+    interval: 30s
+    scrapeTimeout: 10s
+---
+# PrometheusRule for Java API alerts
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: java-api-alerts
+  namespace: sam-ai
+  labels:
+    app: java-api
+    release: monitoring
+spec:
+  groups:
+  - name: java-api
+    interval: 30s
+    rules:
+    # High error rate
+    - alert: JavaAPIHighErrorRate
+      expr: rate(http_server_requests_seconds_count{status=~"5..", app="java-api"}[5m]) > 0.05
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High error rate on Java API"
+        description: "Java API is returning {{ $value }} errors per second"
+    
+    # High memory usage
+    - alert: JavaAPIHighMemoryUsage
+      expr: jvm_memory_used_bytes{app="java-api", area="heap"} / jvm_memory_max_bytes{app="java-api", area="heap"} > 0.9
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High memory usage on Java API"
+        description: "Java API heap memory usage is {{ $value | humanizePercentage }}"
+    
+    # Pod not ready
+    - alert: JavaAPIPodNotReady
+      expr: kube_pod_status_ready{namespace="sam-ai", pod=~"java-api-.*", condition="false"} > 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Java API pod not ready"
+        description: "Pod {{ $labels.pod }} has been not ready for more than 5 minutes"
+    
+    # High latency
+    - alert: JavaAPIHighLatency
+      expr: histogram_quantile(0.95, rate(http_server_requests_seconds_bucket{app="java-api"}[5m])) > 2
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High latency on Java API"
+        description: "95th percentile latency is {{ $value }}s"
+    
+    # Low replica count
+    - alert: JavaAPILowReplicaCount
+      expr: kube_deployment_status_replicas_available{namespace="sam-ai", deployment="java-api"} < 2
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Java API running with less than 2 replicas"
+        description: "Only {{ $value }} replicas available"

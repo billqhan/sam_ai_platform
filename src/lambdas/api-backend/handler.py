@@ -20,6 +20,7 @@ sqs = boto3.client('sqs')
 # Environment variables
 BUCKET_PREFIX = os.environ['BUCKET_PREFIX']
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
+CLOUDFRONT_DOMAIN = os.environ.get('CLOUDFRONT_DOMAIN', '')
 
 # Helper functions
 def decimal_default(obj):
@@ -764,28 +765,36 @@ def get_report_content(event, report_id):
     """Get report content by ID and serve it directly"""
     try:
         # Map report ID to S3 key
-        # We need to look up the actual S3 key from the reports metadata
-        # Since we know the ID, let's build the S3 key based on patterns
+        # Report IDs are generated as: obj['Key'].replace('/', '_').replace('.', '_')
+        # So we need to reverse that: replace underscores back to slashes/dots
         
-        if report_id == 'dashboards_index':
-            s3_key = 'dashboards/index.html'
-        elif report_id == 'index':
-            s3_key = 'index.html'
-        elif report_id.startswith('dashboards_'):
-            # Extract the file part and add .html extension
-            file_part = report_id.replace('dashboards_', '')
-            s3_key = f'dashboards/{file_part}.html'
+        # Reconstruct the S3 key from report ID
+        # Format: 2025-11-13_matches_140A2326Q0011_response_template_txt
+        # Should become: 2025-11-13/matches/140A2326Q0011_response_template.txt
+        
+        parts = report_id.split('_')
+        if len(parts) >= 3:
+            # Try to reconstruct path: date/folder/filename.ext
+            # Find where the file extension marker is (txt, rtf, docx)
+            file_ext = parts[-1]
+            if file_ext in ['txt', 'rtf', 'docx']:
+                # Reconstruct: YYYY-MM-DD/folder/filename.ext
+                date_part = f"{parts[0]}-{parts[1]}-{parts[2]}"  # 2025-11-13
+                folder = parts[3]  # matches
+                filename_parts = parts[4:-1]  # everything between folder and extension
+                filename = '_'.join(filename_parts) + '.' + file_ext
+                s3_key = f"{date_part}/{folder}/{filename}"
+                bucket = f'{BUCKET_PREFIX}-sam-opportunity-responses-{ENVIRONMENT}'
+            else:
+                # HTML report from website bucket
+                s3_key = report_id.replace('_', '/')
+                if not s3_key.endswith('.html'):
+                    s3_key += '.html'
+                bucket = f'{BUCKET_PREFIX}-sam-website-{ENVIRONMENT}'
         else:
-            # Default: replace first underscore with slash and add .html if needed
-            s3_key = report_id.replace('_', '/', 1)
-            if not s3_key.endswith('.html'):
-                s3_key += '.html'
-        
-        # Determine which bucket based on the key pattern
-        if s3_key.startswith('dashboards/') or s3_key == 'index.html':
+            # Fallback for simple IDs
+            s3_key = report_id.replace('_', '/')
             bucket = f'{BUCKET_PREFIX}-sam-website-{ENVIRONMENT}'
-        else:
-            bucket = f'{BUCKET_PREFIX}-sam-matching-out-runs-{ENVIRONMENT}'
             
         try:
             # Get object from S3
@@ -800,6 +809,10 @@ def get_report_content(event, report_id):
                 content_type = 'text/plain'
             elif s3_key.endswith('.csv'):
                 content_type = 'text/csv'
+            elif s3_key.endswith('.rtf'):
+                content_type = 'application/rtf'
+            elif s3_key.endswith('.docx'):
+                content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
                 
             # Return content directly
             return {
@@ -831,13 +844,66 @@ def get_reports(event):
     page_size = int(params.get('pageSize', 20))
     
     try:
-        # S3 bucket for website reports
+        # S3 buckets for different report types
         website_bucket = f'{BUCKET_PREFIX}-sam-website-{ENVIRONMENT}'
+        responses_bucket = f'{BUCKET_PREFIX}-sam-opportunity-responses-{ENVIRONMENT}'
         
         reports = []
         
+        # Get response template reports from opportunity-responses bucket
         try:
             paginator = s3.get_paginator('list_objects_v2')
+            page_iterator = paginator.paginate(Bucket=responses_bucket, Prefix='')
+            
+            for page_obj in page_iterator:
+                if 'Contents' in page_obj:
+                    for obj in page_obj['Contents']:
+                        # Process TXT and RTF/DOCX response files
+                        if obj['Key'].endswith(('.txt', '.rtf', '.docx')):
+                            try:
+                                filename = obj['Key'].split('/')[-1]
+                                # Extract opportunity ID from filename
+                                opp_id = filename.replace('_response_template.txt', '').replace('_response_template.rtf', '').replace('_response_template.docx', '')
+                                report_id = obj['Key'].replace('/', '_').replace('.', '_')
+                                
+                                # Generate presigned URLs for response files (valid for 1 hour)
+                                try:
+                                    view_url = s3.generate_presigned_url(
+                                        'get_object',
+                                        Params={'Bucket': responses_bucket, 'Key': obj['Key']},
+                                        ExpiresIn=3600
+                                    )
+                                    download_url = view_url
+                                except Exception as e:
+                                    print(f"Error generating presigned URLs: {str(e)}")
+                                    view_url = f"https://{responses_bucket}.s3.amazonaws.com/{obj['Key']}"
+                                    download_url = view_url
+                                
+                                report = {
+                                    'id': report_id,
+                                    'title': f'Response Template - {opp_id}',
+                                    'type': 'user',
+                                    'generatedDate': obj['LastModified'].isoformat(),
+                                    'size': obj.get('Size', 0),
+                                    'filename': filename,
+                                    's3Key': obj['Key'],
+                                    'downloadUrl': download_url,
+                                    'viewUrl': view_url,
+                                    'emailSent': False,
+                                    'summary': f'Generated response template for opportunity {opp_id}'
+                                }
+                                
+                                reports.append(report)
+                                
+                            except Exception as e:
+                                print(f"Warning: Could not process response file {obj['Key']}: {str(e)}")
+                                continue
+                                
+        except Exception as e:
+            print(f"Warning: Could not access responses bucket {responses_bucket}: {str(e)}")
+        
+        # Get web dashboard reports from website bucket
+        try:
             page_iterator = paginator.paginate(Bucket=website_bucket, Prefix='')
             
             for page_obj in page_iterator:
@@ -845,6 +911,10 @@ def get_reports(event):
                     for obj in page_obj['Contents']:
                         if obj['Key'].endswith('.html'):
                             try:
+                                # Skip UI application files (index.html, assets, etc.)
+                                if obj['Key'] in ['index.html'] or obj['Key'].startswith('assets/'):
+                                    continue
+                                    
                                 # Extract report info from filename and metadata
                                 filename = obj['Key'].split('/')[-1]
                                 
@@ -871,22 +941,14 @@ def get_reports(event):
                                     title = 'User Report'
                                     icon_type = 'user'
                                 
-                                # Generate presigned URLs for secure access (valid for 1 hour)
-                                try:
-                                    view_url = s3.generate_presigned_url(
-                                        'get_object',
-                                        Params={'Bucket': website_bucket, 'Key': obj['Key']},
-                                        ExpiresIn=3600
-                                    )
-                                    download_url = s3.generate_presigned_url(
-                                        'get_object',
-                                        Params={'Bucket': website_bucket, 'Key': obj['Key']},
-                                        ExpiresIn=3600
-                                    )
-                                except Exception as e:
-                                    print(f"Error generating presigned URLs: {str(e)}")
-                                    view_url = None
-                                    download_url = None
+                                # Generate CloudFront URLs for secure access via CDN
+                                if CLOUDFRONT_DOMAIN:
+                                    view_url = f"https://{CLOUDFRONT_DOMAIN}/{obj['Key']}"
+                                    download_url = f"https://{CLOUDFRONT_DOMAIN}/{obj['Key']}"
+                                else:
+                                    # Fallback to direct S3 URLs if CloudFront not configured
+                                    view_url = f"https://{website_bucket}.s3.amazonaws.com/{obj['Key']}"
+                                    download_url = f"https://{website_bucket}.s3.amazonaws.com/{obj['Key']}"
                                 
                                 # Create report entry
                                 report = {
@@ -897,8 +959,8 @@ def get_reports(event):
                                     'size': obj.get('Size', 0),
                                     'filename': filename,
                                     's3Key': obj['Key'],
-                                    'downloadUrl': download_url or f"https://{website_bucket}.s3.amazonaws.com/{obj['Key']}",
-                                    'viewUrl': view_url or f"https://{website_bucket}.s3.amazonaws.com/{obj['Key']}",
+                                    'downloadUrl': download_url,
+                                    'viewUrl': view_url,
                                     'emailSent': True,  # Assume reports are emailed
                                     'summary': f'Generated report containing opportunity analysis and matches for {obj["LastModified"].strftime("%Y-%m-%d")}'
                                 }

@@ -1,0 +1,229 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: API Gateway + Lambda Backend for RFP Response Agent UI
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+    - dev
+    - staging
+    - prod
+    Description: Environment name
+  ProjectPrefix:
+    Type: String
+    Description: Prefix for resource naming to match existing Lambdas
+Resources:
+  RfpApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name:
+        Fn::Sub: ${ProjectPrefix}-rfp-api-${Environment}
+      StageName:
+        Ref: Environment
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+        MaxAge: "'600'"
+      Auth:
+        DefaultAuthorizer: NONE
+      EndpointConfiguration:
+        Type: REGIONAL
+      TracingEnabled: true
+  ApiBackendFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: ${ProjectPrefix}-sam-api-backend-${Environment}
+      Description: API Gateway handler for RFP UI backend
+      CodeUri: s3://ai-rfp-templates-dev/2584956581e2d669487dcb9d07e2dda5
+      Handler: handler.lambda_handler
+      Runtime: python3.11
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          ENVIRONMENT:
+            Ref: Environment
+          PROJECT_PREFIX:
+            Ref: ProjectPrefix
+          DOWNLOAD_LAMBDA:
+            Fn::Sub: ${ProjectPrefix}-sam-gov-daily-download-${Environment}
+          PROCESSOR_LAMBDA:
+            Fn::Sub: ${ProjectPrefix}-sam-json-processor-${Environment}
+          MATCH_LAMBDA:
+            Fn::Sub: ${ProjectPrefix}-sam-sqs-generate-match-reports-${Environment}
+          WEB_REPORT_LAMBDA:
+            Fn::Sub: ${ProjectPrefix}-sam-produce-web-reports-${Environment}
+          USER_REPORT_LAMBDA:
+            Fn::Sub: ${ProjectPrefix}-sam-produce-user-report-${Environment}
+          EMAIL_LAMBDA:
+            Fn::Sub: ${ProjectPrefix}-sam-daily-email-notification-${Environment}
+          ARCHIVE_LAMBDA:
+            Fn::Sub: ${ProjectPrefix}-sam-merge-and-archive-result-logs-${Environment}
+      Policies:
+      - Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - lambda:InvokeFunction
+          - lambda:GetFunction
+          Resource:
+            Fn::Sub: arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectPrefix}-sam-*
+        - Effect: Allow
+          Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+          - dynamodb:UpdateItem
+          - dynamodb:DeleteItem
+          - dynamodb:Query
+          - dynamodb:Scan
+          Resource:
+            Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*
+        - Effect: Allow
+          Action:
+          - s3:GetObject
+          - s3:PutObject
+          - s3:ListBucket
+          Resource:
+          - Fn::Sub: arn:aws:s3:::${ProjectPrefix}-*
+          - Fn::Sub: arn:aws:s3:::${ProjectPrefix}-*/*
+          - arn:aws:s3:::sam-*
+          - arn:aws:s3:::sam-*/*
+        - Effect: Allow
+          Action:
+          - logs:CreateLogGroup
+          - logs:CreateLogStream
+          - logs:PutLogEvents
+          Resource: '*'
+      Events:
+        GetDashboardMetrics:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /dashboard/metrics
+            Method: GET
+        GetDashboardActivity:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /dashboard/activity
+            Method: GET
+        GetOpportunities:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /opportunities
+            Method: GET
+        GetOpportunityById:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /opportunities/{id}
+            Method: GET
+        GetMatches:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /matches
+            Method: GET
+        GetMatchById:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /matches/{id}
+            Method: GET
+        TriggerWorkflow:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /workflow/trigger
+            Method: POST
+        GetWorkflowStatus:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /workflow/status/{executionId}
+            Method: GET
+        GetWorkflowHistory:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /workflow/history
+            Method: GET
+        GetReports:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /reports
+            Method: GET
+        GetReportById:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /reports/{id}
+            Method: GET
+        DownloadReport:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /reports/{id}/download
+            Method: GET
+        GetSettings:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /settings
+            Method: GET
+        UpdateSettings:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /settings
+            Method: PUT
+        HealthCheck:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RfpApiGateway
+            Path: /health
+            Method: GET
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value:
+      Fn::Sub: https://${RfpApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+    Export:
+      Name:
+        Fn::Sub: ${ProjectPrefix}-api-endpoint-${Environment}
+  ApiFunctionArn:
+    Description: API Backend Lambda Function ARN
+    Value:
+      Fn::GetAtt:
+      - ApiBackendFunction
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${ProjectPrefix}-api-function-arn-${Environment}
+  ApiId:
+    Description: API Gateway ID
+    Value:
+      Ref: RfpApiGateway
+    Export:
+      Name:
+        Fn::Sub: ${ProjectPrefix}-api-id-${Environment}

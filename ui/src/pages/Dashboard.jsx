@@ -245,9 +245,9 @@ export default function Dashboard() {
   ]
 
   const displayMetrics = metrics || mockMetrics
-  const displayChartData = chartData || mockChartData
-  const displayActivity = recentActivity || mockActivity
-  const displayMatches = topMatches || mockTopMatches
+  const displayChartData = Array.isArray(chartData) ? chartData : mockChartData
+  const displayActivity = Array.isArray(recentActivity) ? recentActivity : mockActivity
+  const displayMatches = Array.isArray(topMatches) ? topMatches : mockTopMatches
 
   return (
     <div className="p-6 space-y-6">

@@ -1,0 +1,14 @@
+{
+    "Records":  [
+                    {
+                        "s3":  {
+                                   "bucket":  {
+                                                  "name":  "dev-sam-matching-out-sqs-dev"
+                                              },
+                                   "object":  {
+                                                  "key":  "2025-11-13/matches/2025-11-13.json"
+                                              }
+                               }
+                    }
+                ]
+}

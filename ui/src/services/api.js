@@ -95,7 +95,23 @@ export const dashboardApi = {
   getMetrics: () => api.get('/dashboard/metrics'),
   getChartData: (type, period = '7d') => api.get(`/dashboard/charts/${type}?period=${period}`),
   getRecentActivity: (limit = 10) => api.get(`/dashboard/activity?limit=${limit}`),
-  getTopMatches: (limit = 5) => api.get(`/dashboard/top-matches?limit=${limit}`),
+  // Use existing /matches endpoint and map to dashboard-friendly shape
+  getTopMatches: (limit = 5) =>
+    api
+      .get('/matches', { params: { pageSize: limit } })
+      .then((res) => {
+        const items = Array.isArray(res.data?.items) ? res.data.items : []
+        const mapped = items.map((m) => ({
+          title: m.title || 'Unknown',
+          agency: m.agency || 'Unknown',
+          // API returns matchScore 0..1
+          score: typeof m.matchScore === 'number' ? m.matchScore : 0,
+          // Optional value field isn't provided by API; leave blank
+          value: '',
+          date: m.createdDate || ''
+        }))
+        return { data: mapped }
+      }),
 };
 
 export const settingsApi = {

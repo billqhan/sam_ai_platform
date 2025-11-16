@@ -69,7 +69,9 @@ class SamGovApiClient:
             'limit': self.config.api_limit,
             'postedFrom': posted_from,
             'postedTo': posted_to,
-            'ptype': 'o'  # Opportunities only
+            'ptype': 'o',  # Opportunities only
+            # Some SAM.gov endpoints require api_key as query param even with header
+            'api_key': self.config.sam_api_key
         }
         
         logger.info(f"Making SAM.gov API request with params: {params}")

@@ -47,6 +47,7 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           PROJECT_PREFIX: !Ref ProjectPrefix
+          BUCKET_PREFIX: !Ref ProjectPrefix
           DOWNLOAD_LAMBDA: !Sub '${ProjectPrefix}-sam-gov-daily-download-${Environment}'
           PROCESSOR_LAMBDA: !Sub '${ProjectPrefix}-sam-json-processor-${Environment}'
           MATCH_LAMBDA: !Sub '${ProjectPrefix}-sam-sqs-generate-match-reports-${Environment}'
@@ -61,6 +62,7 @@ Resources:
             - Effect: Allow
               Action:
                 - lambda:InvokeFunction
+                - lambda:GetFunction
               Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectPrefix}-sam-*'
             # Allow DynamoDB access (for future use)
             - Effect: Allow

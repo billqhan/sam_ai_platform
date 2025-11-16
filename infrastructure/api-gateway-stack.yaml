@@ -196,6 +196,13 @@ Resources:
             Path: /reports/{id}/download
             Method: GET
         
+        ViewReport:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RfpApiGateway
+            Path: /reports/{id}/view
+            Method: GET
+        
         # Settings endpoints
         GetSettings:
           Type: Api

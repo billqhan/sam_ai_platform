@@ -108,6 +108,13 @@ Resources:
             Path: /dashboard/activity
             Method: GET
         
+        DashboardProxy:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RfpApiGateway
+            Path: /dashboard/{proxy+}
+            Method: GET
+        
         # Opportunities endpoints
         GetOpportunities:
           Type: Api

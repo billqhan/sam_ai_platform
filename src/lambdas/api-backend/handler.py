@@ -41,6 +41,54 @@ def cors_response(status_code, body):
         'body': json.dumps(body, default=decimal_default)
     }
 
+def get_dashboard_chart_data(event, chart_type):
+    """Get dashboard chart data"""
+    from datetime import timedelta
+    params = event.get('queryStringParameters', {}) or {}
+    period = params.get('period', '7d')
+    
+    # Parse period (7d, 30d, 90d)
+    days = int(period.rstrip('d'))
+    
+    # Generate date range
+    today = datetime.now().date()
+    dates = [(today - timedelta(days=days-i-1)).isoformat() for i in range(days)]
+    
+    # TODO: Fetch actual data from DynamoDB/CloudWatch
+    # For now, return mock data in Recharts format
+    if chart_type == 'opportunities':
+        mock_data = [10, 15, 12, 18, 20, 16, 22] if days == 7 else [10] * days
+        return cors_response(200, [
+            {'date': dates[i], 'opportunities': mock_data[i], 'matches': mock_data[i] // 2}
+            for i in range(days)
+        ])
+    elif chart_type == 'matches':
+        mock_data = [5, 8, 6, 10, 12, 9, 14] if days == 7 else [5] * days
+        return cors_response(200, [
+            {'date': dates[i], 'matches': mock_data[i]}
+            for i in range(days)
+        ])
+    else:
+        return cors_response(400, {'error': f'Unknown chart type: {chart_type}'})
+
+def get_top_matches(event):
+    """Get top matches for dashboard"""
+    params = event.get('queryStringParameters', {}) or {}
+    limit = int(params.get('limit', 5))
+    
+    # TODO: Query DynamoDB for top matches
+    # Return empty array for now - UI will use mock data
+    return cors_response(200, [])
+
+def get_dashboard_activity(event):
+    """Get recent activity for dashboard"""
+    params = event.get('queryStringParameters', {}) or {}
+    limit = int(params.get('limit', 10))
+    
+    # TODO: Query DynamoDB/CloudWatch for recent activity
+    # Return empty array for now - UI will use mock data
+    return cors_response(200, [])
+
 def get_dashboard_metrics(event):
     """Get dashboard summary metrics"""
     try:
@@ -1102,6 +1150,13 @@ def lambda_handler(event, context):
         # Dashboard endpoints
         if path == '/dashboard/metrics':
             return get_dashboard_metrics(event)
+        elif path.startswith('/dashboard/charts/'):
+            chart_type = path.split('/')[-1]
+            return get_dashboard_chart_data(event, chart_type)
+        elif path.startswith('/dashboard/top-matches'):
+            return get_top_matches(event)
+        elif path == '/dashboard/activity':
+            return get_dashboard_activity(event)
         
         # Opportunities endpoints
         elif path == '/opportunities':

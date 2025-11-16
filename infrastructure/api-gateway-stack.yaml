@@ -149,7 +149,7 @@ Resources:
           Type: Api
           Properties:
             RestApiId: !Ref RfpApiGateway
-            Path: /workflow/status/{executionId}
+            Path: /workflow/status
             Method: GET
         
         GetWorkflowHistory:

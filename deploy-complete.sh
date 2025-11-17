@@ -59,9 +59,48 @@ full_deployment() {
 deploy_infrastructure() {
     log_header "DEPLOYING INFRASTRUCTURE + LAMBDA FUNCTIONS + CLOUDFORMATION"
     
-    # Check if PowerShell is available for complete deployment
+    # Step 2a: Deploy CloudFormation infrastructure
+    log_info "Deploying CloudFormation infrastructure stack..."
+    
+    # Check if stack exists
+    if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" >/dev/null 2>&1; then
+        local stack_status=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --query 'Stacks[0].StackStatus' --output text)
+        log_info "Stack $STACK_NAME exists with status: $stack_status"
+        
+        if [[ "$stack_status" == "ROLLBACK_COMPLETE" ]]; then
+            log_warning "Stack in ROLLBACK_COMPLETE state, deleting first..."
+            aws cloudformation delete-stack --stack-name "$STACK_NAME" --region "$REGION"
+            aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" --region "$REGION" 2>/dev/null || true
+            log_info "Stack deleted, will recreate"
+        fi
+    fi
+    
+    # Deploy or update stack using main-template.yaml (more complete than minimal-stack.yaml)
+    local cfn_template="infrastructure/cloudformation/main-template.yaml"
+    if [ ! -f "$cfn_template" ]; then
+        cfn_template="infrastructure/minimal-stack.yaml"
+    fi
+    
+    log_info "Using template: $cfn_template"
+    
+    if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" >/dev/null 2>&1; then
+        log_info "Creating new CloudFormation stack..."
+        aws cloudformation create-stack \
+            --stack-name "$STACK_NAME" \
+            --template-body "file://$cfn_template" \
+            --parameters \
+                ParameterKey=Environment,ParameterValue="$ENVIRONMENT" \
+                ParameterKey=BucketPrefix,ParameterValue="$BUCKET_PREFIX" \
+            --region "$REGION" \
+            --capabilities CAPABILITY_IAM \
+            --on-failure DO_NOTHING || log_warning "Stack creation initiated (may use existing resources)"
+    else
+        log_info "Stack exists, skipping CloudFormation deployment (use 'aws cloudformation update-stack' manually if needed)"
+    fi
+    
+    # Step 2b: Deploy Lambda functions
     if command -v powershell >/dev/null 2>&1 || command -v pwsh >/dev/null 2>&1; then
-        log_info "Using PowerShell for complete CloudFormation + Lambda deployment..."
+        log_info "Deploying Lambda functions via PowerShell..."
         cd deployment
         
         local ps_cmd="powershell"
@@ -69,34 +108,13 @@ deploy_infrastructure() {
             ps_cmd="pwsh"
         fi
         
-        # This deploys:
-        # 1. CloudFormation infrastructure (S3, DynamoDB, IAM, etc.)
-        # 2. All Lambda functions (10+ functions)
-        # 3. Lambda environment configuration
-        # 4. Validation workflow
-        log_info "Deploying complete stack with CloudFormation and Lambda functions..."
-        $ps_cmd -File deploy-complete-stack.ps1 -BucketPrefix "$BUCKET_PREFIX" -Region "$REGION" -TemplatesBucket "ai-rfp-templates-dev" -SamApiKey "placeholder-key" -CompanyName "L3Harris Technologies" -CompanyContact "admin@l3harris.com"
+        $ps_cmd -File deploy-all-lambdas.ps1 -Environment "$ENVIRONMENT" -BucketPrefix "$BUCKET_PREFIX" -Region "$REGION"
         cd ..
+        log_success "Lambda functions deployed"
     else
-        log_info "PowerShell not available, deploying minimal CloudFormation infrastructure only..."
-        log_info "Note: Lambda functions require PowerShell deployment scripts"
-        
-        # Create CloudFormation templates bucket
-        aws s3 mb "s3://${BUCKET_PREFIX}-cloudformation-templates" --region "$REGION" 2>/dev/null || true
-        aws s3 sync infrastructure/cloudformation/ "s3://${BUCKET_PREFIX}-cloudformation-templates/" --delete
-        
-        # Deploy minimal infrastructure if needed
-        if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" >/dev/null 2>&1; then
-            aws cloudformation deploy \
-                --template-file infrastructure/minimal-stack.yaml \
-                --stack-name "$STACK_NAME" \
-                --parameter-overrides \
-                    Environment="$ENVIRONMENT" \
-                    BucketPrefix="$BUCKET_PREFIX" \
-                --region "$REGION"
-        fi
-        
-        log_info "For Lambda function deployment, use: cd deployment && powershell -File deploy-all-lambdas.ps1"
+        log_warning "PowerShell not available - Lambda functions not deployed"
+        log_info "Install PowerShell: brew install --cask powershell"
+        log_info "Then run: cd deployment && pwsh -File deploy-all-lambdas.ps1"
     fi
 }
 
@@ -942,11 +960,22 @@ generate_deployment_report() {
 # Main execution based on arguments
 deploy_eks_cluster() {
   log_header "DEPLOYING EKS CLUSTER (OPTIONAL)"
+  
+  # Check if cluster already exists
+  local cluster_name="${EKS_CLUSTER_NAME:-rfp-dev-cluster}"
+  if eksctl get cluster --name "$cluster_name" --region "$REGION" >/dev/null 2>&1; then
+    log_success "EKS cluster already exists: $cluster_name"
+    # Ensure kubeconfig context is present
+    aws eks update-kubeconfig --region "$REGION" --name "$cluster_name" >/dev/null 2>&1 || true
+    return 0
+  fi
+  
   local cluster_script="deployment/eks/create-cluster.sh"
   if [ ! -f "$cluster_script" ]; then
     log_warning "Cluster script not found: $cluster_script"
     return 1
   fi
+  
   # Allow overrides via env vars
   [ -n "$EKS_CLUSTER_NAME" ] && export CLUSTER_NAME="$EKS_CLUSTER_NAME"
   [ -n "$EKS_NAMESPACE" ] && export EKS_NAMESPACE="$EKS_NAMESPACE"
@@ -955,6 +984,81 @@ deploy_eks_cluster() {
 
 deploy_java_api_eks() {
   log_header "DEPLOYING JAVA API TO EKS VIA HELM (OPTIONAL)"
+  
+  # Check prerequisites
+  if ! command -v helm >/dev/null 2>&1; then
+    log_warning "Helm not installed"
+    log_info "Install Helm: brew install helm"
+    log_info "Or visit: https://helm.sh/docs/intro/install/"
+    return 1
+  fi
+  
+  if ! command -v kubectl >/dev/null 2>&1; then
+    log_warning "kubectl not installed"
+    log_info "Install kubectl: brew install kubectl"
+    return 1
+  fi
+  
+  # Ensure cluster exists (create if needed, skip if already exists)
+  deploy_eks_cluster || { log_warning "Failed to ensure EKS cluster exists"; return 1; }
+
+  # Ensure kubeconfig is set to the target cluster
+  if [ -n "${EKS_CLUSTER_NAME:-}" ]; then
+    log_info "Updating kubeconfig for cluster $EKS_CLUSTER_NAME"
+    aws eks update-kubeconfig --region "$REGION" --name "$EKS_CLUSTER_NAME" >/dev/null
+  fi
+  
+  # Create Fargate profile if EKS_USE_FARGATE is true
+  if [ "${EKS_USE_FARGATE:-false}" = "true" ]; then
+    local cluster_name="${EKS_CLUSTER_NAME:-rfp-dev-cluster}"
+    local namespace="${EKS_NAMESPACE:-rfp}"
+    local profile_name="${namespace}-fargate"
+    
+    # Check if Fargate profile already exists
+    if eksctl get fargateprofile --cluster "$cluster_name" --region "$REGION" --name "$profile_name" >/dev/null 2>&1; then
+      log_info "Fargate profile '$profile_name' already exists for namespace '$namespace'"
+    else
+      log_info "Creating Fargate profile '$profile_name' for namespace '$namespace'"
+      eksctl create fargateprofile \
+        --cluster "$cluster_name" \
+        --region "$REGION" \
+        --name "$profile_name" \
+        --namespace "$namespace"
+      log_success "Fargate profile created: $profile_name"
+    fi
+  fi
+  
+  # Derive IMAGE_TAG if not provided
+  if [ -z "${IMAGE_TAG:-}" ]; then
+    IMAGE_TAG=$(git rev-parse --short HEAD 2>/dev/null || echo "latest")
+    export IMAGE_TAG
+    log_info "IMAGE_TAG not set; using $IMAGE_TAG"
+  fi
+  
+  # Build IMAGE_REPO from account/region/prefix if not provided
+  if [ -z "${IMAGE_REPO:-}" ]; then
+    local aws_account_id
+    aws_account_id=$(aws sts get-caller-identity --query Account --output text)
+    local repo_name
+    repo_name="${BUCKET_PREFIX}-rfp-java-api"
+    export IMAGE_REPO="$aws_account_id.dkr.ecr.$REGION.amazonaws.com/$repo_name"
+    log_info "Using IMAGE_REPO: $IMAGE_REPO"
+  fi
+  
+  # Validate image tag exists in ECR, fallback to 'latest' if missing
+  if [ -n "${repo_name:-}" ]; then
+    if ! aws ecr describe-images --repository-name "$repo_name" --image-ids imageTag="$IMAGE_TAG" --region "$REGION" >/dev/null 2>&1; then
+      log_warning "ECR image tag '$IMAGE_TAG' not found in $repo_name; falling back to 'latest'"
+      IMAGE_TAG="latest"
+      export IMAGE_TAG
+    fi
+  fi
+  
+  # Map EKS_NAMESPACE to helm script's NAMESPACE variable if provided
+  if [ -n "${EKS_NAMESPACE:-}" ]; then
+    export NAMESPACE="$EKS_NAMESPACE"
+  fi
+  
   local helm_script="deployment/eks/deploy-java-api.sh"
   if [ ! -f "$helm_script" ]; then
     log_warning "Helm deploy script not found: $helm_script"

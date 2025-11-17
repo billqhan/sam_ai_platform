@@ -11,6 +11,12 @@ pipeline {
         AWS_ACCOUNT_ID = '160936122037'
         ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         CLOUDFRONT_DISTRIBUTION = 'EZ3JUM700S8C6'
+        UI_URL = 'https://d8bbmb3a6jev2.cloudfront.net'
+        API_BASE = 'https://3cvymua5c8.execute-api.us-east-1.amazonaws.com/dev'
+    }
+    
+    parameters {
+        booleanParam(name: 'DEPLOY_INFRA', defaultValue: true, description: 'Also deploy infrastructure changes (CloudFormation). Disable to run module-only deploys.')
     }
     
     options {
@@ -175,7 +181,10 @@ pipeline {
         
         stage('Infrastructure') {
             when {
-                environment name: 'BUILD_INFRA', value: 'true'
+                allOf {
+                    environment name: 'BUILD_INFRA', value: 'true'
+                    expression { return params.DEPLOY_INFRA }
+                }
             }
             steps {
                 input message: 'Deploy infrastructure changes?', ok: 'Deploy'
@@ -196,9 +205,9 @@ pipeline {
         stage('Integration Tests') {
             steps {
                 sh '''
-                    echo "Running integration tests..."
-                    curl -f https://d8bbmb3a6jev2.cloudfront.net/ || exit 1
-                    curl -f https://3cvymua5c8.execute-api.us-east-1.amazonaws.com/dev/health || exit 1
+                    echo "Running post-deploy smoke tests..."
+                    chmod +x deployment/tests/smoke.sh
+                    UI_URL='${UI_URL}' API_BASE='${API_BASE}' bash deployment/tests/smoke.sh
                 '''
             }
         }

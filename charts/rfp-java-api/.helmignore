@@ -1,0 +1,12 @@
+# Common Helm ignore patterns
+.git/
+.github/
+.gitignore
+.idea/
+.vscode/
+*.swp
+*.bak
+*.tmp
+*.orig
+.DS_Store
+node_modules/

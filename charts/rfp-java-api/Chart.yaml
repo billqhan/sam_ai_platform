@@ -1,0 +1,17 @@
+apiVersion: v2
+name: rfp-java-api
+version: 0.1.0
+appVersion: "1.0.0"
+description: Helm chart for the RFP Java API service
+keywords:
+  - java
+  - spring
+  - api
+  - rfp
+home: https://example.com
+sources:
+  - https://github.com/billqhan/sam_ai_platform
+maintainers:
+  - name: team
+    email: team@example.com
+type: application

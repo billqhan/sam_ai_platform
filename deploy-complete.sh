@@ -25,6 +25,7 @@ NC='\033[0m'
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_header() { echo -e "\n${PURPLE}═══ $1 ═══${NC}\n"; }
+log_warning() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 
 # Step 1: Full system verification and build
 full_deployment() {
@@ -939,6 +940,32 @@ generate_deployment_report() {
 }
 
 # Main execution based on arguments
+deploy_eks_cluster() {
+  log_header "DEPLOYING EKS CLUSTER (OPTIONAL)"
+  local cluster_script="deployment/eks/create-cluster.sh"
+  if [ ! -f "$cluster_script" ]; then
+    log_warning "Cluster script not found: $cluster_script"
+    return 1
+  fi
+  # Allow overrides via env vars
+  [ -n "$EKS_CLUSTER_NAME" ] && export CLUSTER_NAME="$EKS_CLUSTER_NAME"
+  [ -n "$EKS_NAMESPACE" ] && export EKS_NAMESPACE="$EKS_NAMESPACE"
+  bash "$cluster_script"
+}
+
+deploy_java_api_eks() {
+  log_header "DEPLOYING JAVA API TO EKS VIA HELM (OPTIONAL)"
+  local helm_script="deployment/eks/deploy-java-api.sh"
+  if [ ! -f "$helm_script" ]; then
+    log_warning "Helm deploy script not found: $helm_script"
+    return 1
+  fi
+  if [ -z "$IMAGE_TAG" ]; then
+    log_warning "IMAGE_TAG not set. Export IMAGE_TAG=<ecr-tag> before running or pass inline."
+  fi
+  bash "$helm_script"
+}
+
 case "${1:-full}" in
     "verify")
         ./deployment-verify.sh
@@ -971,6 +998,13 @@ case "${1:-full}" in
         test_complete_system
         generate_deployment_report
         ;;
+    "eks-cluster")
+      deploy_eks_cluster
+      ;;
+    "java-api-eks")
+      deploy_eks_cluster  # Ensure cluster exists; harmless if already created
+      deploy_java_api_eks
+      ;;
     *)
         echo "Usage: $0 [verify|infrastructure|lambda|api-gateway|java-api|ui|cloudfront|test|full]"
         echo ""
@@ -984,5 +1018,7 @@ case "${1:-full}" in
         echo "  cloudfront     - Create/update CloudFront distribution for UI"
         echo "  test           - Test deployed components"
         echo "  full           - Complete deployment verification and testing (default)"
+      echo "  eks-cluster    - Create EKS cluster (does not run in full by default)"
+      echo "  java-api-eks   - Deploy Java API to EKS via Helm (cluster first if needed)"
         ;;
 esac

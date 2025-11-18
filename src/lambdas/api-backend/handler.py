@@ -209,10 +209,16 @@ def get_opportunities(event):
                                         json_key = f"{opp_folder}/{opportunity_id}_opportunity.json"
                                         response = s3.get_object(Bucket=extracted_bucket, Key=json_key)
                                         opportunity_data = json.loads(response['Body'].read().decode('utf-8'))
-                                        
+
+                                        # Prefer stable ID from processed data, then noticeId, then folder name
+                                        computed_id = opportunity_data.get('id') or opportunity_id or opportunity_data.get('noticeId')
+                                        # Skip invalid or placeholder IDs
+                                        if not computed_id or str(computed_id).strip().lower() == 'unknown':
+                                            continue
+
                                         # Extract key fields for the list view
                                         opp = {
-                                            'id': opportunity_data.get('noticeId', opportunity_id),
+                                            'id': computed_id,
                                             'title': opportunity_data.get('title', 'No title'),
                                             'description': opportunity_data.get('description', '')[:300] + '...' if len(opportunity_data.get('description', '')) > 300 else opportunity_data.get('description', ''),
                                             'agency': opportunity_data.get('department', opportunity_data.get('subagency', 'Unknown')),
@@ -680,6 +686,180 @@ def get_workflow_history(event):
     ]
     return cors_response(200, history)
 
+def get_matches_by_opportunity(event, opportunity_id):
+    """Get all matches for a specific opportunity"""
+    try:
+        matches_bucket = f'{BUCKET_PREFIX}-sam-matching-out-runs-{ENVIRONMENT}'
+        
+        # Look for match reports for this opportunity
+        matches = []
+        seen_ids = set()
+
+        # Fallback: deep search for the opportunity_id anywhere in the JSON
+        def deep_contains(value, target):
+            try:
+                if isinstance(value, dict):
+                    for v in value.values():
+                        if deep_contains(v, target):
+                            return True
+                elif isinstance(value, list):
+                    for v in value:
+                        if deep_contains(v, target):
+                            return True
+                else:
+                    if isinstance(value, (str, int)):
+                        return str(value) == str(target)
+                return False
+            except Exception:
+                return False
+        try:
+            print(f"[matches_by_opportunity] bucket={matches_bucket} id={opportunity_id}")
+            # Pattern 1: Historical path runs/{opportunityId}/...
+            resp1 = s3.list_objects_v2(
+                Bucket=matches_bucket,
+                Prefix=f'runs/{opportunity_id}'
+            )
+            count1 = len(resp1.get('Contents', []))
+            print(f"[matches_by_opportunity] runs/{opportunity_id} count={count1}")
+            if 'Contents' in resp1:
+                for obj in resp1['Contents']:
+                    if obj['Key'].endswith('.json'):
+                        try:
+                            match_obj = s3.get_object(Bucket=matches_bucket, Key=obj['Key'])
+                            match_data = json.loads(match_obj['Body'].read().decode('utf-8'))
+                            if isinstance(match_data, dict):
+                                item_id = obj['Key'].split('/')[-1].replace('.json', '')
+                                if item_id in seen_ids:
+                                    continue
+                                seen_ids.add(item_id)
+                                opp_id_in_json = match_data.get('opportunityId') or match_data.get('opportunity_id') or opportunity_id
+                                matches.append({
+                                    'id': item_id,
+                                    'opportunityId': opp_id_in_json,
+                                    'title': match_data.get('opportunity_title', match_data.get('title', 'No title')),
+                                    'matchScore': match_data.get('match_score', match_data.get('score', 0.0)),
+                                    'status': match_data.get('status', 'completed'),
+                                    'agency': match_data.get('agency', match_data.get('department', 'Unknown')),
+                                    'type': match_data.get('type', 'Solicitation'),
+                                    'createdDate': obj['LastModified'].isoformat(),
+                                    'responseDeadline': match_data.get('response_deadline', match_data.get('responseDeadLine', '')),
+                                    'reason': match_data.get('match_reason', match_data.get('reasoning', 'Automated match')),
+                                    'confidence': match_data.get('confidence', match_data.get('match_score', 0.0)),
+                                    'requirements': match_data.get('requirements', []),
+                                    'capabilities': match_data.get('capabilities', [])
+                                })
+                        except Exception as e:
+                            print(f"Error processing match file {obj['Key']}: {str(e)}")
+                            continue
+
+            # Pattern 2: Current path runs/raw/YYYYMMDDtHHMMZ_{opportunityId}.json
+            # Pattern 2: Current path runs/raw/ with pagination
+            paginator = s3.get_paginator('list_objects_v2')
+            page_it = paginator.paginate(Bucket=matches_bucket, Prefix='runs/raw/')
+            total_raw = 0
+            for page in page_it:
+                contents = page.get('Contents', [])
+                total_raw += len(contents)
+                for obj in contents:
+                    key = obj['Key']
+                    if key.endswith('.json'):
+                        try:
+                            match_obj = s3.get_object(Bucket=matches_bucket, Key=key)
+                            match_data = json.loads(match_obj['Body'].read().decode('utf-8'))
+                            if isinstance(match_data, dict):
+                                sol_num = match_data.get('solicitationNumber')
+                                notice_id = match_data.get('noticeId')
+                                opp_id_in_json = match_data.get('opportunityId') or match_data.get('opportunity_id')
+                                file_id = key.split('/')[-1].replace('.json', '')
+                                if (
+                                    sol_num == opportunity_id
+                                    or notice_id == opportunity_id
+                                    or opp_id_in_json == opportunity_id
+                                    or key.endswith(f'_{opportunity_id}.json')
+                                    or deep_contains(match_data, opportunity_id)
+                                ):
+                                    if file_id in seen_ids:
+                                        continue
+                                    seen_ids.add(file_id)
+                                    matches.append({
+                                        'id': file_id,
+                                        'opportunityId': opp_id_in_json or opportunity_id,
+                                        'title': match_data.get('opportunity_title', match_data.get('title', 'No title')),
+                                        'matchScore': match_data.get('match_score', match_data.get('score', 0.0)),
+                                        'status': match_data.get('status', 'completed'),
+                                        'agency': match_data.get('agency', match_data.get('department', 'Unknown')),
+                                        'type': match_data.get('type', 'Solicitation'),
+                                        'createdDate': obj['LastModified'].isoformat(),
+                                        'responseDeadline': match_data.get('response_deadline', match_data.get('responseDeadLine', '')),
+                                        'reason': match_data.get('match_reason', match_data.get('reasoning', 'Automated match')),
+                                        'confidence': match_data.get('confidence', match_data.get('match_score', 0.0)),
+                                        'requirements': match_data.get('requirements', []),
+                                        'capabilities': match_data.get('capabilities', [])
+                                    })
+                        except Exception as e:
+                            print(f"Error processing match file {key}: {str(e)}")
+                            continue
+            print(f"[matches_by_opportunity] runs/raw total scanned={total_raw}, matches_found={len(matches)}")
+        except Exception as e:
+            print(f"Error accessing matches bucket: {str(e)}")
+            return cors_response(404, {'error': 'No matches found for this opportunity'})
+
+        # Pattern 3: Daily SQS-style outputs: {date}/matches/{opportunityId}.json
+        try:
+            sqs_bucket = f'{BUCKET_PREFIX}-sam-matching-out-sqs-{ENVIRONMENT}'
+            print(f"[matches_by_opportunity] scanning SQS bucket={sqs_bucket}")
+            paginator = s3.get_paginator('list_objects_v2')
+            page_it = paginator.paginate(Bucket=sqs_bucket)
+            sqs_scanned = 0
+            for page in page_it:
+                contents = page.get('Contents', [])
+                sqs_scanned += len(contents)
+                for obj in contents:
+                    key = obj['Key']
+                    if key.endswith(f'/matches/{opportunity_id}.json'):
+                        try:
+                            match_obj = s3.get_object(Bucket=sqs_bucket, Key=key)
+                            match_data = json.loads(match_obj['Body'].read().decode('utf-8'))
+                            file_id = key.split('/')[-1].replace('.json', '')
+                            if file_id in seen_ids:
+                                continue
+                            seen_ids.add(file_id)
+                            opp_id_in_json = match_data.get('opportunityId') or match_data.get('opportunity_id') or opportunity_id
+                            matches.append({
+                                'id': key.split('/')[-2],
+                                'opportunityId': opp_id_in_json,
+                                'title': match_data.get('opportunity_title', match_data.get('title', 'No title')),
+                                'matchScore': match_data.get('match_score', match_data.get('score', 0.0)),
+                                'status': match_data.get('status', 'completed'),
+                                'agency': match_data.get('agency', match_data.get('department', 'Unknown')),
+                                'type': match_data.get('type', 'Solicitation'),
+                                'createdDate': obj['LastModified'].isoformat(),
+                                'responseDeadline': match_data.get('response_deadline', match_data.get('responseDeadLine', '')),
+                                'reason': match_data.get('match_reason', match_data.get('reasoning', 'Automated match')),
+                                'confidence': match_data.get('confidence', match_data.get('match_score', 0.0)),
+                                'requirements': match_data.get('requirements', []),
+                                'capabilities': match_data.get('capabilities', [])
+                            })
+                        except Exception as e:
+                            print(f"Error processing SQS match file {key}: {str(e)}")
+                            continue
+            print(f"[matches_by_opportunity] SQS total scanned={sqs_scanned}, matches_found={len(matches)}")
+        except Exception as e:
+            print(f"Warning: error scanning SQS bucket: {str(e)}")
+        
+        if not matches:
+            return cors_response(404, {'error': 'No matches found for this opportunity'})
+        
+        return cors_response(200, {
+            'matches': matches,
+            'total': len(matches),
+            'opportunityId': opportunity_id
+        })
+        
+    except Exception as e:
+        print(f"Error getting matches by opportunity: {str(e)}")
+        return cors_response(500, {'error': 'Internal server error', 'message': str(e)})
+
 def get_matches(event):
     """List matches with optional filters"""
     params = event.get('queryStringParameters', {}) or {}
@@ -715,7 +895,7 @@ def get_matches(event):
                                 if isinstance(match_data, dict):
                                     match = {
                                         'id': obj['Key'].split('/')[-1].replace('.json', ''),
-                                        'opportunityId': match_data.get('opportunity_id', 'Unknown'),
+                                        'opportunityId': match_data.get('opportunityId', match_data.get('opportunity_id', 'Unknown')),
                                         'title': match_data.get('opportunity_title', match_data.get('title', 'No title')),
                                         'matchScore': match_data.get('match_score', match_data.get('score', 0.0)),
                                         'status': match_data.get('status', 'pending'),
@@ -756,7 +936,7 @@ def get_matches(event):
                                     
                                     match = {
                                         'id': obj['Key'].split('/')[-1].replace('.json', ''),
-                                        'opportunityId': response_data.get('opportunity_id', 'Unknown'),
+                                        'opportunityId': response_data.get('opportunityId', response_data.get('opportunity_id', 'Unknown')),
                                         'title': response_data.get('title', 'No title'),
                                         'matchScore': response_data.get('score', 0.8),
                                         'status': 'generated',
@@ -1185,6 +1365,9 @@ def lambda_handler(event, context):
             return get_matches(event)
         elif path == '/matches/trigger' and http_method == 'POST':
             return trigger_matching(event)
+        elif path.startswith('/matches/opportunity/'):
+            opp_id = path.split('/')[-1]
+            return get_matches_by_opportunity(event, opp_id)
         
         # Reports endpoints
         elif path == '/reports':

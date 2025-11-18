@@ -805,45 +805,54 @@ def get_matches_by_opportunity(event, opportunity_id):
             return cors_response(404, {'error': 'No matches found for this opportunity'})
 
         # Pattern 3: Daily SQS-style outputs: {date}/matches/{opportunityId}.json
+        # Check last 30 days of date folders
         try:
+            from datetime import datetime, timedelta
             sqs_bucket = f'{BUCKET_PREFIX}-sam-matching-out-sqs-{ENVIRONMENT}'
             print(f"[matches_by_opportunity] scanning SQS bucket={sqs_bucket}")
-            paginator = s3.get_paginator('list_objects_v2')
-            page_it = paginator.paginate(Bucket=sqs_bucket)
+            
+            # Generate list of date prefixes to check (last 30 days)
+            today = datetime.now()
+            date_prefixes = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(30)]
+            
             sqs_scanned = 0
-            for page in page_it:
-                contents = page.get('Contents', [])
-                sqs_scanned += len(contents)
-                for obj in contents:
-                    key = obj['Key']
-                    if key.endswith(f'/matches/{opportunity_id}.json'):
-                        try:
-                            match_obj = s3.get_object(Bucket=sqs_bucket, Key=key)
-                            match_data = json.loads(match_obj['Body'].read().decode('utf-8'))
-                            file_id = key.split('/')[-1].replace('.json', '')
-                            if file_id in seen_ids:
-                                continue
-                            seen_ids.add(file_id)
-                            opp_id_in_json = match_data.get('opportunityId') or match_data.get('opportunity_id') or opportunity_id
-                            matches.append({
-                                'id': key.split('/')[-2],
-                                'opportunityId': opp_id_in_json,
-                                'title': match_data.get('opportunity_title', match_data.get('title', 'No title')),
-                                'matchScore': match_data.get('match_score', match_data.get('score', 0.0)),
-                                'status': match_data.get('status', 'completed'),
-                                'agency': match_data.get('agency', match_data.get('department', 'Unknown')),
-                                'type': match_data.get('type', 'Solicitation'),
-                                'createdDate': obj['LastModified'].isoformat(),
-                                'responseDeadline': match_data.get('response_deadline', match_data.get('responseDeadLine', '')),
-                                'reason': match_data.get('match_reason', match_data.get('reasoning', 'Automated match')),
-                                'confidence': match_data.get('confidence', match_data.get('match_score', 0.0)),
-                                'requirements': match_data.get('requirements', []),
-                                'capabilities': match_data.get('capabilities', [])
-                            })
-                        except Exception as e:
-                            print(f"Error processing SQS match file {key}: {str(e)}")
-                            continue
-            print(f"[matches_by_opportunity] SQS total scanned={sqs_scanned}, matches_found={len(matches)}")
+            for date_prefix in date_prefixes:
+                key = f'{date_prefix}/matches/{opportunity_id}.json'
+                try:
+                    match_obj = s3.get_object(Bucket=sqs_bucket, Key=key)
+                    match_data = json.loads(match_obj['Body'].read().decode('utf-8'))
+                    sqs_scanned += 1
+                    
+                    file_id = opportunity_id
+                    if file_id in seen_ids:
+                        continue
+                    seen_ids.add(file_id)
+                    
+                    opp_id_in_json = match_data.get('opportunityId') or match_data.get('opportunity_id') or opportunity_id
+                    matches.append({
+                        'id': f"{date_prefix}_matches",
+                        'opportunityId': opp_id_in_json,
+                        'title': match_data.get('opportunity_title', match_data.get('title', 'No title')),
+                        'matchScore': match_data.get('match_score', match_data.get('score', 0.0)),
+                        'status': match_data.get('status', 'completed'),
+                        'agency': match_data.get('agency', match_data.get('department', 'Unknown')),
+                        'type': match_data.get('type', 'Solicitation'),
+                        'createdDate': date_prefix,
+                        'responseDeadline': match_data.get('response_deadline', match_data.get('responseDeadLine', '')),
+                        'reason': match_data.get('match_reason', match_data.get('reasoning', 'Automated match')),
+                        'confidence': match_data.get('confidence', match_data.get('match_score', 0.0)),
+                        'requirements': match_data.get('requirements', []),
+                        'capabilities': match_data.get('capabilities', [])
+                    })
+                    print(f"[matches_by_opportunity] Found SQS match for {opportunity_id} on {date_prefix}")
+                except s3.exceptions.NoSuchKey:
+                    # No match file for this date, continue
+                    pass
+                except Exception as e:
+                    print(f"Error processing SQS match file {key}: {str(e)}")
+                    continue
+            
+            print(f"[matches_by_opportunity] SQS checked {len(date_prefixes)} dates, found={sqs_scanned}, total_matches={len(matches)}")
         except Exception as e:
             print(f"Warning: error scanning SQS bucket: {str(e)}")
         

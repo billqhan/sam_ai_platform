@@ -224,7 +224,7 @@ def process_sqs_record(record: Dict[str, Any],
         
         # Extract opportunity ID from key
         opportunity_id = data_extractor.extract_opportunity_id(source_key)
-        logger.info(f"📊 Opportunity ID: {opportunity_id}")
+        logger.info(f"📊 Extracted Opportunity ID from key: {opportunity_id}")
         
         # Start comprehensive error tracking
         error_handler.start_processing(opportunity_id, "data_extraction")
@@ -238,6 +238,17 @@ def process_sqs_record(record: Dict[str, Any],
             error_handler.log_s3_operation("read", source_bucket, source_key)
             
             opportunity_data = data_extractor.read_opportunity_data(source_bucket, source_key)
+
+            # Derive a canonical ID from content when possible
+            derived_id = (
+                opportunity_data.get('id')
+                or opportunity_data.get('solicitationNumber')
+                or opportunity_data.get('noticeId')
+                or opportunity_id
+            )
+            if derived_id != opportunity_id:
+                logger.info(f"🔁 Canonicalizing opportunity ID: {opportunity_id} -> {derived_id}")
+            opportunity_id = derived_id
             
             # Log successful read with file size if available
             if opportunity_data:
@@ -647,6 +658,8 @@ def create_enhanced_match_result(opportunity_data: Dict[str, Any],
     
     # Create the comprehensive match result structure
     match_result = {
+        # Canonical opportunity id for downstream consumers
+        'opportunityId': opportunity_id,
         # Core SAM.gov metadata fields
         'solicitationNumber': solicitation_number,
         'noticeId': notice_id,
@@ -841,6 +854,7 @@ def create_enhanced_run_result(match_result: Dict[str, Any], current_time: datet
     """
     # Extract core fields from match_result
     run_result = {
+        'opportunityId': match_result.get('opportunityId', ''),
         'solicitationNumber': match_result.get('solicitationNumber', ''),
         'noticeId': match_result.get('noticeId', ''),
         'title': match_result.get('title', ''),

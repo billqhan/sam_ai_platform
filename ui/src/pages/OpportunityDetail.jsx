@@ -16,7 +16,7 @@ import {
   User,
   Award
 } from 'lucide-react'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, isValid } from 'date-fns'
 
 export default function OpportunityDetail() {
   const { id } = useParams()
@@ -29,7 +29,18 @@ export default function OpportunityDetail() {
 
   const { data: matches } = useQuery({
     queryKey: ['matches', id],
-    queryFn: () => matchesApi.getByOpportunity(id),
+    queryFn: async () => {
+      try {
+        const res = await matchesApi.getByOpportunity(id)
+        return res
+      } catch (err) {
+        // Treat 404 as no matches; rethrow others
+        if (err?.response?.status === 404) {
+          return { data: { matches: [], total: 0 } }
+        }
+        throw err
+      }
+    },
     select: (response) => response.data,
   })
 
@@ -87,6 +98,32 @@ export default function OpportunityDetail() {
   const displayOpp = opportunity || mockOpportunity
   const displayMatches = matches || mockMatches
 
+  const safeFormat = (dateStr, fmt = 'MMM dd, yyyy') => {
+    if (!dateStr) return 'N/A'
+    try {
+      const d = parseISO(dateStr)
+      if (!isValid(d)) return 'N/A'
+      return format(d, fmt)
+    } catch {
+      return 'N/A'
+    }
+  }
+
+  const formatPlaceOfPerformance = (pop) => {
+    if (!pop) return 'N/A'
+    if (typeof pop === 'string') return pop
+    try {
+      const city = pop?.city?.name || ''
+      const state = pop?.state?.name || ''
+      const country = pop?.country?.name || ''
+      const zip = pop?.zip || ''
+      const parts = [city, state, zip, country].filter(Boolean)
+      return parts.length ? parts.join(', ') : 'N/A'
+    } catch {
+      return 'N/A'
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="p-6">
@@ -138,18 +175,14 @@ export default function OpportunityDetail() {
             <Calendar className="w-5 h-5 text-gray-400" />
             <div>
               <p className="text-xs text-gray-500">Posted Date</p>
-              <p className="text-sm font-medium text-gray-900">
-                {format(parseISO(displayOpp.postedDate), 'MMM dd, yyyy')}
-              </p>
+              <p className="text-sm font-medium text-gray-900">{safeFormat(displayOpp.postedDate)}</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
             <Clock className="w-5 h-5 text-gray-400" />
             <div>
               <p className="text-xs text-gray-500">Response Deadline</p>
-              <p className="text-sm font-medium text-danger-600">
-                {format(parseISO(displayOpp.responseDeadline), 'MMM dd, yyyy')}
-              </p>
+              <p className="text-sm font-medium text-danger-600">{safeFormat(displayOpp.responseDeadline)}</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -274,7 +307,7 @@ export default function OpportunityDetail() {
                 <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
                 <div>
                   <p className="text-xs text-gray-500 mb-1">Place of Performance</p>
-                  <p className="text-sm text-gray-900">{displayOpp.placeOfPerformance}</p>
+                  <p className="text-sm text-gray-900">{formatPlaceOfPerformance(displayOpp.placeOfPerformance)}</p>
                 </div>
               </div>
             </div>

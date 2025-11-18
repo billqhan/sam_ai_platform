@@ -137,24 +137,27 @@ class OpportunityProcessor:
         opportunity_number = self._get_opportunity_number(opportunity)
         if not opportunity_number:
             raise NonRetryableError("Opportunity missing required identifier", ErrorType.DATA_ERROR)
-        
+
         logger.info("Processing opportunity", opportunity_number=opportunity_number)
-        
+
+        # Add a consistent 'id' field to the opportunity
+        opportunity['id'] = opportunity_number
+
         # Create date-based folder structure (YYYY-MM-DD)
         current_date = datetime.now().strftime('%Y-%m-%d')
-        
+
         # Create the opportunity folder structure with date prefix
         opportunity_folder = f"{current_date}/{opportunity_number}/"
         opportunity_file_key = f"{opportunity_folder}{opportunity_number}_opportunity.json"
-        
+
         # Store the opportunity JSON
         self._store_opportunity_json(opportunity, opportunity_file_key)
-        
+
         # Download and store resource files
         resource_links = opportunity.get('resourceLinks', [])
         if resource_links:
             self._download_resource_files(resource_links, opportunity_number, opportunity_folder)
-        
+
         logger.info("Completed processing opportunity", 
                    opportunity_number=opportunity_number,
                    resource_files=len(resource_links))

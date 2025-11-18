@@ -51,7 +51,7 @@ echo ""
 if [ "$SKIP_DOWNLOAD" = false ]; then
     echo "[1/5] Downloading opportunities from SAM.gov..."
     aws lambda invoke \
-        --function-name l3harris-qhan-sam-gov-daily-download-dev \
+        --function-name dev-sam-gov-daily-download-dev \
         --region us-east-1 \
         download-response.json > /dev/null
     
@@ -79,7 +79,7 @@ fi
 echo ""
 echo "[2/5] Processing opportunities..."
 aws lambda invoke \
-    --function-name l3harris-qhan-sam-json-processor-dev \
+    --function-name dev-sam-json-processor-dev \
     --region us-east-1 \
     parser-response.json > /dev/null
 
@@ -102,7 +102,7 @@ fi
 echo ""
 echo "[3/5] Generating AI matches..."
 aws lambda invoke \
-    --function-name l3harris-qhan-sam-sqs-generate-match-reports-dev \
+    --function-name dev-sam-sqs-generate-match-reports-dev \
     --region us-east-1 \
     matching-response.json > /dev/null
 
@@ -125,7 +125,7 @@ fi
 echo ""
 echo "[4/5] Generating reports..."
 aws lambda invoke \
-    --function-name l3harris-qhan-sam-produce-web-reports-dev \
+    --function-name dev-sam-produce-web-reports-dev \
     --region us-east-1 \
     reports-response.json > /dev/null
 
@@ -148,7 +148,7 @@ fi
 echo ""
 echo "[5/5] Sending email notification..."
 aws lambda invoke \
-    --function-name l3harris-qhan-sam-daily-email-notification-dev \
+    --function-name dev-sam-daily-email-notification-dev \
     --region us-east-1 \
     email-response.json > /dev/null
 

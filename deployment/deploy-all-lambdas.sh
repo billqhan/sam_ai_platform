@@ -55,6 +55,7 @@ LAMBDA_FUNCTIONS=(
     "sam-merge-and-archive-result-logs"
     "sam-produce-web-reports"
     "sam-daily-email-notification"
+    "api-backend"
 )
 
 SOURCE_ROOT="../src/lambdas"

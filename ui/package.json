@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "AI-Powered RFP Response Agent - Web UI",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

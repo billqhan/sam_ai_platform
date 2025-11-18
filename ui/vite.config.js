@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import fs from 'node:fs'
 
 export default defineConfig(({ mode }) => {
   // Load .env.dev from project root (one level up) for development mode
@@ -9,8 +10,6 @@ export default defineConfig(({ mode }) => {
   // Simple env file parser
   const env = {};
   try {
-    const fs = require('fs');
-    const path = require('path');
     // Handle both Unix and Windows paths
     const normalizedPath = process.platform === 'win32' ? envPath.substring(1) : envPath;
     const content = fs.readFileSync(normalizedPath, 'utf-8');

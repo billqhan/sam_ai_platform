@@ -12,7 +12,7 @@ import {
   ChevronDown,
   X
 } from 'lucide-react'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, isValid } from 'date-fns'
 
 function FilterPanel({ filters, onFilterChange, onClearFilters }) {
   const [showFilters, setShowFilters] = useState(false)
@@ -151,6 +151,17 @@ function OpportunityCard({ opportunity }) {
   const matchScore = opportunity.matchScore || 0
   const hasMatch = matchScore > 0.7
 
+  const safeFormat = (dateStr, fmt = 'MMM dd, yyyy') => {
+    if (!dateStr) return 'N/A'
+    try {
+      const d = parseISO(dateStr)
+      if (!isValid(d)) return 'N/A'
+      return format(d, fmt)
+    } catch {
+      return 'N/A'
+    }
+  }
+
   return (
     <Link
       to={`/opportunities/${opportunity.id}`}
@@ -168,7 +179,7 @@ function OpportunityCard({ opportunity }) {
             </div>
             <div className="flex items-center">
               <Calendar className="w-4 h-4 mr-1" />
-              {format(parseISO(opportunity.postedDate), 'MMM dd, yyyy')}
+              {safeFormat(opportunity.postedDate)}
             </div>
           </div>
         </div>

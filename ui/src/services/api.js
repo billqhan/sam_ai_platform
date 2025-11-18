@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '/api';
+// If VITE_API_BASE_URL is set (production API Gateway), use it as-is without /api prefix
+// Otherwise fall back to VITE_API_URL or local /api proxy
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL 
+  ? import.meta.env.VITE_API_BASE_URL
+  : (import.meta.env.VITE_API_URL || '/api');
 
 const api = axios.create({
   baseURL: API_BASE_URL,

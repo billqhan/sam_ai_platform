@@ -41,7 +41,7 @@ export default defineConfig(({ mode }) => {
       // Only use proxy if no API_BASE_URL is configured
       proxy: env.VITE_API_BASE_URL ? {} : {
         '/api': {
-          target: env.VITE_API_URL || 'http://localhost:4000',
+          target: 'http://localhost:4000',
           changeOrigin: true,
         }
       }
@@ -49,9 +49,6 @@ export default defineConfig(({ mode }) => {
     define: {
       // Inject env vars into the app
       'import.meta.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL),
-      'import.meta.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL),
-      'import.meta.env.VITE_AWS_REGION': JSON.stringify(env.VITE_AWS_REGION),
-      'import.meta.env.VITE_ENVIRONMENT': JSON.stringify(env.VITE_ENVIRONMENT),
     },
     build: {
       outDir: 'dist',

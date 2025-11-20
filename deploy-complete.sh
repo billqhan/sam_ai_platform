@@ -27,38 +27,126 @@ log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_header() { echo -e "\n${PURPLE}═══ $1 ═══${NC}\n"; }
 log_warning() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 
+# Verification & Build Helpers (migrated from deployment-verify.sh)
+command_exists() { command -v "$1" >/dev/null 2>&1; }
+
+verify_prerequisites() {
+  log_header "VERIFYING PREREQUISITES"
+  local all_good=true
+
+  if command_exists aws; then
+    local aws_version=$(aws --version 2>&1 | cut -d/ -f2 | cut -d' ' -f1)
+    log_success "AWS CLI v$aws_version installed"
+    if ! aws sts get-caller-identity >/dev/null 2>&1; then
+      log_warning "AWS credentials not configured (sts get-caller-identity failed)"
+      all_good=false
+    fi
+  else
+    log_warning "AWS CLI not installed"
+    all_good=false
+  fi
+
+  if command_exists docker; then
+    log_success "Docker available"
+  else
+    log_warning "Docker not installed (required for ECS builds)"
+    all_good=false
+  fi
+
+  if command_exists mvn; then
+    log_success "Maven installed"
+  else
+    log_warning "Maven not installed"
+    all_good=false
+  fi
+
+  if command_exists node; then
+    log_success "Node.js $(node --version) installed"
+  else
+    log_warning "Node.js not installed"
+    all_good=false
+  fi
+  if command_exists npm; then
+    log_success "npm $(npm --version) installed"
+  else
+    log_warning "npm not installed"
+    all_good=false
+  fi
+
+  # Environment variables
+  for v in BUCKET_PREFIX ENVIRONMENT REGION; do
+    if [ -z "${!v}" ]; then
+      log_warning "Missing required env var: $v"
+      all_good=false
+    fi
+  done
+
+  [ "$all_good" = true ] || { log_warning "Prerequisite verification failed"; }
+  return $([ "$all_good" = true ] && echo 0 || echo 1)
+}
+
+build_java_api() {
+  log_header "BUILDING JAVA API"
+  if [ -d "java-api" ]; then
+    (cd java-api && mvn clean package -DskipTests)
+    if [ -f "java-api/target/rfp-response-agent-api-1.0.0.jar" ]; then
+      log_success "Java API built (JAR present)"
+    else
+      log_warning "Java API build finished but JAR missing"
+    fi
+  else
+    log_warning "Directory 'java-api' not found"
+  fi
+}
+
+build_react_ui() {
+  log_header "BUILDING REACT UI"
+  if [ -d "ui" ]; then
+    (cd ui && npm install && npm run build)
+    if [ -f "ui/dist/index.html" ]; then
+      log_success "React UI build complete"
+    else
+      log_warning "UI build completed but dist/index.html missing"
+    fi
+  else
+    log_warning "Directory 'ui' not found"
+  fi
+}
+
+deploy_ui_assets() {
+  log_header "DEPLOYING UI ASSETS TO S3"
+  local ui_bucket="${BUCKET_PREFIX}-sam-website-${ENVIRONMENT}"
+  if [ -d "ui/dist" ]; then
+    aws s3 sync ui/dist/ "s3://$ui_bucket/" --delete
+    log_success "UI assets synced to S3 bucket: $ui_bucket"
+  else
+    log_warning "UI dist folder not found; build may have failed"
+  fi
+}
+
+verify_cloudfront() {
+  log_header "VERIFYING CLOUDFRONT DISTRIBUTION"
+  local ui_bucket="${BUCKET_PREFIX}-sam-website-${ENVIRONMENT}"
+  local domain_name="${ui_bucket}.s3.${REGION}.amazonaws.com"
+  local existing_dist=$(aws cloudfront list-distributions --query "DistributionList.Items[?Origins.Items[?DomainName=='${domain_name}']].Id" --output text 2>/dev/null | tr -d '\n')
+  if [ -n "$existing_dist" ] && [ "$existing_dist" != "None" ]; then
+    local cf_domain=$(aws cloudfront get-distribution --id "$existing_dist" --query 'Distribution.DomainName' --output text 2>/dev/null)
+    log_success "CloudFront distribution active: $existing_dist (https://$cf_domain)"
+  else
+    log_warning "No CloudFront distribution detected for origin: $domain_name"
+  fi
+}
+
 # Step 1: Full deployment - Java API and UI only
 full_deployment() {
     log_header "RUNNING FULL DEPLOYMENT - JAVA API & UI"
-    
-    # Build Java API
-    log_header "BUILDING JAVA API"
-    if [ -d "java-api" ]; then
-        cd java-api
-        mvn clean package -DskipTests
-        cd ..
-        log_success "Java API built successfully"
-    fi
-    
-    # Deploy Java API to ECS
-    log_header "DEPLOYING JAVA API TO ECS"
+  verify_prerequisites || log_warning "Continuing despite prerequisite warnings"
+  build_java_api
+  log_header "DEPLOYING JAVA API TO ECS"
     deploy_java_api_ecs
-    
-    # Build and deploy UI
-    log_header "BUILDING & DEPLOYING UI"
-    if [ -d "ui" ]; then
-        cd ui
-        npm install
-        npm run build
-        cd ..
-        
-        local ui_bucket="${BUCKET_PREFIX}-sam-website-${ENVIRONMENT}"
-        aws s3 sync ui/dist/ "s3://$ui_bucket/" --delete
-        log_success "UI deployed to S3: $ui_bucket"
-    fi
-    
-    # Deploy CloudFront
-    log_header "DEPLOYING CLOUDFRONT"
+  build_react_ui
+  deploy_ui_assets
+  log_header "DEPLOYING CLOUDFRONT"
     deploy_cloudfront
     
     log_success "\n✅ Full deployment complete!"
@@ -487,8 +575,8 @@ test_complete_system() {
     else
         log_warning "⚠️  Java API service not found or not active"
     fi
-    
-    echo ""  
+    echo ""
+    verify_cloudfront || true
 }
 
 # Step 4: Generate final deployment report
@@ -508,14 +596,17 @@ generate_deployment_report() {
     echo ""
     
     echo "📋 QUICK ACCESS COMMANDS:"
-    echo "  # Verify deployment:"
-    echo "  ./deployment-verify.sh"
+    echo "  # Verify prerequisites only:" 
+    echo "  ./deploy-complete.sh verify"
     echo ""
-    echo "  # Rebuild and redeploy UI:"
-    echo "  ./deployment-verify.sh deploy-ui"
+    echo "  # Build & deploy Java API only:" 
+    echo "  ./deploy-complete.sh java-api"
     echo ""
-    echo "  # Test system:"
-    echo "  ./deployment-verify.sh test"
+    echo "  # Build & deploy UI only:" 
+    echo "  ./deploy-complete.sh ui"
+    echo ""
+    echo "  # Test deployed components:" 
+    echo "  ./deploy-complete.sh test"
     echo ""
     
     echo "🔧 JAVA API DEPLOYMENT OPTIONS:"
@@ -643,18 +734,20 @@ deploy_java_api_eks() {
 }
 
 case "${1:-full}" in
-    "verify")
-        ./deployment-verify.sh
-        ;;
-
-    "java-api")
-        ./deployment-verify.sh build
-        deploy_java_api_ecs
-        ;;
-    "ui")
-        ./deployment-verify.sh deploy-ui
-        deploy_cloudfront
-        ;;
+  "verify")
+    verify_prerequisites
+    ;;
+  "java-api")
+    verify_prerequisites || true
+    build_java_api
+    deploy_java_api_ecs
+    ;;
+  "ui")
+    verify_prerequisites || true
+    build_react_ui
+    deploy_ui_assets
+    deploy_cloudfront
+    ;;
     "cloudfront")
         deploy_cloudfront
         ;;

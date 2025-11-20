@@ -1,264 +1,132 @@
-# 🚀 AI-Powered RFP Response Agent - Complete Deployment Guide
+# Deployment Guide (UI + Java API Only)
 
-## 📋 Current System Status
+## Scope
 
-✅ **FULLY DEPLOYED COMPONENTS:**
-- **React UI**: Live at https://dvik8huzkbem6.cloudfront.net
-- **AWS Infrastructure**: S3, DynamoDB, Lambda functions active
-- **CloudFormation Stacks**: Infrastructure as code deployed
-- **CloudFront CDN**: Global distribution with caching
-- **Java API**: Built and ready for deployment
+This guide documents only the deployment of:
 
-### 🔧 **Lambda Functions Deployed:**
-- `l3harris-qhan-sam-api-backend-dev` - Backend API processing
-- `sam-gov-daily-download` - SAM.gov data retrieval
-- `sam-json-processor` - Opportunity data processing  
-- `sam-sqs-generate-match-reports` - AI matching reports
-- `sam-produce-user-report` - User report generation
-- `sam-merge-and-archive-result-logs` - Log management
-- `sam-produce-web-reports` - Web dashboard reports
-- `sam-daily-email-notification` - Email notifications
+- React UI (Vite) → S3 + CloudFront
+- Java API (Spring Boot) → ECS (Fargate) or optional EKS via Helm
 
-### 📊 **CloudFormation Stacks:**
-- `ai-rfp-response-agent-dev-dynamodb-tables` - Database infrastructure
-- Additional nested stacks for S3, IAM, Lambda deployment
+All former Lambda, SQS, DynamoDB, EventBridge, SAM.gov ingestion and related CloudFormation assets have been removed.
 
-## 🛠️ Available Deployment Scripts
+## Script Overview
 
-### 1. Complete Deployment (Recommended)
+`deploy-complete.sh` centralizes build, deployment, CloudFront distribution creation and verification. Former `deployment-verify.sh` functionality is fully inlined.
+
+### Core Commands
 ```bash
-# Full system deployment: infrastructure + Lambda + Java API + UI
-./deploy-complete.sh
+# Full build & deploy (Java API → ECS + UI → S3 + CloudFront)
+./deploy-complete.sh full
 
-# Or verify current status first
-./deployment-verify.sh verify
-```
-
-### 2. Component-Specific Deployment
-```bash
-# Deploy only Lambda functions
-./deploy-complete.sh lambda
-
-# Deploy only the React UI
-./deploy-complete.sh ui
-
-# Deploy only Java API to ECS with Docker
+# Deploy Java API only
 ./deploy-complete.sh java-api
 
-# Deploy all components in sequence
-./deploy-complete.sh
-```
-
-### 3. Manual Workflow Scripts
-```bash
-# Trigger complete workflow from deployment directory
-cd deployment
-pwsh -File run-complete-workflow.ps1 -OpportunitiesToProcess 10
-
-# Or trigger specific workflow step
-pwsh -File trigger-workflow.ps1
-```
-
-## 📊 System Architecture Overview
-
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   React UI      │────│   CloudFront     │────│   Users         │
-│   (S3 Static)   │    │   (Global CDN)   │    │   (Worldwide)   │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-         │
-         │ API Calls
-         ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Java API      │────│   Load Balancer  │────│   API Gateway   │
-│   (Spring Boot) │    │   (Elastic LB)   │    │   (Optional)    │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-         │
-         │ Data Access
-         ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   DynamoDB      │    │   S3 Buckets     │    │   Lambda Funcs  │
-│   (4 Tables)    │    │   (8 Buckets)    │    │   (Processing)  │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-```
-
-## 🔧 Deployment Configurations
-
-### Environment Variables (Centralized in `.env.dev`)
-
-All configuration is managed in `.env.dev` at project root. Key variables include:
-
-```bash
-# Core Configuration
-BUCKET_PREFIX="dev"
-ENVIRONMENT="dev"
-REGION="us-east-1"
-STACK_NAME="ai-rfp-response-agent-dev"
-
-# Storage
-TEMPLATES_BUCKET="ai-rfp-templates-dev"
-# ... additional S3 buckets, DynamoDB tables, SQS queues, etc.
-
-# API Configuration
-SAM_API_KEY="SAM-95a93ccd-9d79-41be-a0a5-0e01ef13a75a"
-API_GATEWAY_URL="https://i7bz81i0l1.execute-api.us-east-1.amazonaws.com/dev"
-CLOUDFRONT_ID="E3QHR30BKR6VGZ"
-
-# AWS CLI Configuration
-AWS_PAGER=""  # Disable pager for automated scripts
-```
-
-**Note:** All deployment scripts automatically source `.env.dev`. No manual configuration needed.
-
-### AWS Resources Deployed
-- **S3 Buckets**: 8 buckets for data storage and UI hosting
-- **DynamoDB Tables**: 4 tables for opportunities, matches, proposals, reports
-- **Lambda Functions**: Backend API processing
-- **CloudFront**: Global CDN for UI distribution
-- **CloudFormation**: Infrastructure as code management
-
-## 🚀 Quick Start Deployment
-
-### For First-Time Deployment:
-```bash
-# 1. Verify prerequisites and infrastructure
-./deploy-complete.sh verify
-
-# 2. Run complete deployment
-./deploy-complete.sh full
-
-# 3. Deploy Java API (choose one):
-./deploy-complete.sh java-eb    # Elastic Beanstalk (recommended for dev)
-# OR
-./deploy-complete.sh java-ecs   # ECS with Docker (recommended for prod)
-```
-
-### For Updates:
-```bash
-# Update UI only
+# Deploy UI only
 ./deploy-complete.sh ui
 
-# Update Java API
-./deployment-verify.sh build
-./deploy-complete.sh java-eb
+# Create/verify CloudFront distribution
+./deploy-complete.sh cloudfront
 
-# Test everything
+# Verify prerequisites
+./deploy-complete.sh verify
+
+# Test deployed components
 ./deploy-complete.sh test
 ```
 
-## 📋 Prerequisites Checklist
-
-- ✅ AWS CLI v2+ configured with proper credentials
-- ✅ Java 17+ for Spring Boot application
-- ✅ Maven 3.6+ for Java build
-- ✅ Node.js 16+ and npm for React build
-- ✅ Docker (optional, for ECS deployment)
-- ✅ PowerShell (optional, for legacy scripts)
-
-## 🌐 Access URLs
-
-| Component | URL | Status |
-|-----------|-----|---------|
-| **React UI** | https://dvik8huzkbem6.cloudfront.net | ✅ Live |
-| **Java API** | *Deploy with scripts above* | 🔄 Ready |
-| **Lambda API** | *Via API Gateway* | ✅ Active |
-
-## 🔍 Monitoring & Verification
-
-### Health Checks
+### Optional EKS
 ```bash
-# Check UI accessibility
-curl -I https://dvik8huzkbem6.cloudfront.net
-
-# Verify AWS resources
-aws cloudformation describe-stacks --stack-name ai-rfp-response-agent-dev-dynamodb-tables
-aws dynamodb list-tables --query 'TableNames[?contains(@,`l3harris-qhan`)]'
-aws s3 ls | grep l3harris-qhan
-
-# Test Lambda function
-aws lambda invoke --function-name l3harris-qhan-sam-api-backend-dev output.json
+./deploy-complete.sh eks-cluster     # Create EKS cluster if absent
+./deploy-complete.sh java-api-eks    # Deploy Java API via Helm chart
 ```
 
-### System Testing
-```bash
-# Run automated tests
-./deploy-complete.sh test
+## Simplified Architecture
 
-# Manual verification
-./deployment-verify.sh verify
+```
+┌────────────┐      ┌──────────────┐      ┌──────────┐
+│   React    │ ───▶ │  CloudFront  │ ───▶ │  Users    │
+│   (S3)     │      │   CDN        │      │  Browser  │
+└────────────┘      └──────────────┘      └──────────┘
+   │ API Calls
+   ▼
+┌────────────────┐   (Fargate/EKS)
+│  Java API      │
+│  Spring Boot   │
+└────────────────┘
 ```
 
-## 🐛 Troubleshooting
+## Environment Variables
 
-### Common Issues:
-
-1. **CloudFront Cache Issues**
-   ```bash
-   # Create invalidation to clear cache
-   aws cloudfront create-invalidation --distribution-id E3QHR30BKR6VGZ --paths "/*"
-   ```
-
-2. **Java API Build Issues**
-   ```bash
-   # Clean rebuild
-   cd java-api && mvn clean package -DskipTests
-   ```
-
-3. **AWS Permissions**
-   ```bash
-   # Verify credentials
-   aws sts get-caller-identity
-   ```
-
-4. **React Build Issues**
-   ```bash
-   # Clean rebuild
-   cd ui && rm -rf node_modules dist && npm install && npm run build
-   ```
-
-### Log Locations:
-- **CloudFormation**: AWS Console → CloudFormation → Stack Events
-- **Lambda**: CloudWatch Logs
-- **Elastic Beanstalk**: EB Console → Logs
-- **ECS**: CloudWatch Container Insights
-
-## 📈 Next Steps After Deployment
-
-1. **API Integration**: Connect React UI to Java API endpoints
-2. **Domain Setup**: Configure custom domain with Route 53
-3. **SSL Certificates**: Set up HTTPS with ACM
-4. **Monitoring**: Configure CloudWatch alarms and dashboards
-5. **CI/CD**: Set up automated deployment pipelines
-6. **Security**: Review IAM policies and implement least privilege
-7. **Performance**: Optimize CloudFront and API response times
-8. **Backup**: Configure automated backups for DynamoDB
-
-## 📞 Support Commands
-
+Minimal required variables (see `.env.dev`):
 ```bash
-# Get deployment status
-./deployment-verify.sh summary
+export BUCKET_PREFIX="dev"
+export ENVIRONMENT="dev"
+export REGION="us-east-1"
+export UI_BUCKET="dev-sam-website-dev"  # S3 bucket for built UI
+```
+Optional: EKS cluster name, Bedrock model IDs.
 
-# Full system verification
+## Quick Start
+```bash
+# Verify tools & env vars
+./deploy-complete.sh verify
+
+# Full deployment
 ./deploy-complete.sh full
 
-# Emergency rebuild and redeploy
-./deploy-complete.sh ui && ./deploy-complete.sh java-eb
+# UI only
+./deploy-complete.sh ui
 
-# Check all AWS resources
-aws resourcegroupstaggingapi get-resources --tag-filters Key=Environment,Values=dev
+# Java API only (ECS)
+./deploy-complete.sh java-api
+```
+
+## Prerequisites
+
+- AWS CLI & valid credentials
+- Java 17+, Maven 3.6+
+- Node.js 18+, npm
+- Docker (for ECS/EKS image builds)
+- (Optional) helm, kubectl, eksctl
+
+## Access URLs
+
+After first successful full deployment the CloudFront URL will be printed by the script. Java API public IP/endpoint can be retrieved via ECS task network interface lookup.
+
+## Verification Examples
+```bash
+# UI presence
+aws s3 ls "s3://$UI_BUCKET/index.html"
+
+# CloudFront domain
+aws cloudfront list-distributions --query 'DistributionList.Items[].DomainName'
+
+# ECS service status
+aws ecs describe-services --cluster "${BUCKET_PREFIX}-ecs-cluster" --services "${BUCKET_PREFIX}-java-api-service" --region "$REGION"
+```
+
+## Troubleshooting
+| Issue | Action |
+|-------|--------|
+| UI not updated | Re-run `./deploy-complete.sh ui`; invalidate CloudFront if cached. |
+| CloudFront missing | Run `./deploy-complete.sh cloudfront` to create. |
+| ECS task unhealthy | Check CloudWatch logs; verify security group allows 8080. |
+| Multi-arch build fails | Remove buildx or create builder manually. |
+
+## Next Steps
+1. Wire UI to live Java API endpoints
+2. Add custom domain + HTTPS (ACM + Route53)
+3. CI/CD pipeline for automated image builds
+4. CloudWatch alarms/dashboards for ECS performance
+
+## Useful Commands
+```bash
+./deploy-complete.sh test
+aws ecs list-tasks --cluster "${BUCKET_PREFIX}-ecs-cluster" --region "$REGION"
+aws ec2 describe-network-interfaces --network-interface-ids <eni-id> --query 'NetworkInterfaces[0].Association.PublicIp' --output text
 ```
 
 ---
 
-## 🎯 Summary
-
-Your AI-Powered RFP Response Agent system is **successfully deployed** with:
-- ✅ Production-ready React UI served via CloudFront
-- ✅ Complete AWS infrastructure (S3, DynamoDB, Lambda)
-- ✅ Enterprise Java API ready for final deployment
-- ✅ Automated deployment and verification scripts
-
-**Main UI Access**: https://dvik8huzkbem6.cloudfront.net
-
-The system is operational and ready for use! 🚀
+## Summary
+Platform reduced to core components: React UI + Java API. Legacy serverless pipeline removed. Use `deploy-complete.sh` for all build/deploy operations.

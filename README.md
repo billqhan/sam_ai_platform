@@ -1,236 +1,146 @@
-# AI-Powered RFP Response Agent
+# RFP Response Platform (UI + Java API Only)
 
-An automated system that retrieves government contracting opportunities from SAM.gov, processes them using AWS Bedrock AI, and generates match reports to identify relevant business opportunities.
+This repository has been streamlined to contain only two deployable components:
 
-## Development Methodology
+1. **React UI (Vite)** – Static front‑end hosted in S3 and served via CloudFront.
+2. **Java API (Spring Boot)** – Backend service deployed to ECS (Fargate) or optionally to EKS via Helm.
 
-This project was developed using Kiro's spec-driven development methodology, following a systematic approach from requirements gathering through design to implementation. The complete development process is documented in the [project specifications](.kiro/specs/ai-rfp-response-agent/README.md), which includes:
+All former serverless pipeline assets (Lambda, SQS, DynamoDB event workflow, SAM.gov ingestion) have been removed. Documentation and scripts now focus solely on building and deploying the UI and Java API.
 
-- **Requirements Analysis**: 11 detailed requirements with EARS format acceptance criteria covering the complete system workflow
-- **System Design**: Comprehensive serverless architecture design using AWS services with event-driven processing
-- **Implementation Planning**: 11 major tasks with 40+ actionable sub-tasks for incremental development
-
-The spec documents provide full traceability from business requirements to implementation tasks, ensuring systematic and well-documented development. For detailed information about the development process and methodology, see the [spec summary](.kiro/specs/ai-rfp-response-agent/README.md).
-
-### Development Process Documentation
-
-The `docs/` folder contains the original prompts and interactions used during the spec creation phase in Kiro's "Let's Build" feature:
-
-- **Initial Concept**: The original system requirements and architecture vision
-- **Requirements Refinement**: Iterative prompts used to clarify and expand requirements
-- **Design Evolution**: Prompts that guided the architectural design process
-
-These documents provide insight into the iterative development process and can serve as reference for similar projects or future enhancements.
-
-## Architecture
-
-The system uses a serverless, event-driven architecture built on AWS:
-
-- **Lambda Functions**: Process data at each stage of the pipeline
-- **S3 Buckets**: Store raw data, processed results, and generated reports
-- **SQS**: Queue opportunities for AI processing
-- **Bedrock**: AI-powered opportunity matching and analysis
-- **EventBridge**: Schedule automated tasks
-
-## Project Structure
-
+## Project Layout (Reduced)
 ```
-├── README.md                       # This file
-├── .kiro/specs/ai-rfp-response-agent/  # Project specifications
-│   ├── requirements.md             # Feature requirements
-│   ├── design.md                   # System design
-│   └── tasks.md                    # Implementation tasks
-├── docs/                           # Development process documentation
-│   └── prompts/                    # Original spec creation prompts
-│       ├── 00-Kiro_Start_Image.png # Kiro "Let's Build" interface screenshot
-│       ├── 01-Initial_prompt.txt   # Initial system concept and requirements
-│       ├── 02-Requirement_update_prompt.txt  # Requirements refinement prompts
-│       └── 03-Design_Document_update_prompt.txt  # Design iteration prompts
-├── .github/
-│   └── workflows/
-│       └── deploy.yml              # GitHub Actions CI/CD (manual trigger only)
-├── infrastructure/                 # Infrastructure as Code
-│   ├── cloudformation/
-│   │   ├── main-template.yaml      # Main CloudFormation template
-│   │   ├── master-template.yaml    # Master template
-│   │   ├── template.yaml           # Legacy template
-│   │   ├── lambda-functions.yaml   # Lambda function definitions
-│   │   ├── s3-bucket-policies.yaml # S3 bucket configurations
-│   │   ├── s3-event-notifications.yaml  # S3 event triggers
-│   │   ├── iam-security-policies.yaml   # IAM roles and policies
-│   │   ├── eventbridge-rules.yaml  # EventBridge scheduling
-│   │   ├── monitoring-alerting.yaml     # CloudWatch monitoring
-│   │   ├── parameters-dev.json     # Development parameters
-│   │   ├── parameters-prod.json    # Production parameters
-│   │   ├── README.md               # Infrastructure documentation
-│   │   ├── MONITORING.md           # Monitoring guide
-│   │   └── SECURITY.md             # Security documentation
-│   ├── scripts/
-│   │   ├── deploy.sh               # Unix deployment script
-│   │   ├── deploy.ps1              # PowerShell deployment script
-│   │   ├── manage-config.sh        # Configuration management
-│   │   ├── package-lambdas.sh      # Lambda packaging
-│   │   └── rollback.sh             # Rollback script
-│   └── DEPLOYMENT.md               # Deployment documentation
-├── reports/                        # Task completion reports
-│   ├── task-1-completion-report.md
-│   ├── task-2-completion-report.md
-│   └── ... (additional task reports)
-└── src/
-    ├── lambdas/                    # Lambda function implementations
-    │   ├── sam-gov-daily-download/
-    │   │   ├── handler.py          # Main Lambda handler
-    │   │   ├── lambda_function.py  # Lambda entry point
-    │   │   ├── requirements.txt    # Dependencies
-    │   │   └── test_lambda.py      # Unit tests
-    │   ├── sam-json-processor/
-    │   │   ├── handler.py          # Processing logic
-    │   │   ├── requirements.txt    # Dependencies
-    │   │   ├── pytest.ini          # Test configuration
-    │   │   ├── test_handler.py     # Handler tests
-    │   │   └── test_opportunity_processing.py  # Processing tests
-    │   ├── sam-sqs-generate-match-reports/
-    │   │   ├── handler.py          # Match report generation
-    │   │   ├── requirements.txt    # Dependencies
-    │   │   └── test_handler.py     # Unit tests
-    │   ├── sam-produce-user-report/
-    │   │   ├── handler.py          # Report generation handler
-    │   │   ├── report_generator.py # Report generation logic
-    │   │   ├── template_manager.py # Template management
-    │   │   └── requirements.txt    # Dependencies
-    │   ├── sam-produce-web-reports/
-    │   │   ├── handler.py          # Web report handler
-    │   │   ├── dashboard_generator.py  # Dashboard creation
-    │   │   ├── data_aggregator.py  # Data aggregation
-    │   │   └── requirements.txt    # Dependencies
-    │   └── sam-merge-and-archive-result-logs/
-    │       ├── handler.py          # Log merging handler
-    │       └── requirements.txt    # Dependencies
-    └── shared/                     # Shared utilities and libraries
-        ├── __init__.py             # Package initialization
-        ├── aws_clients.py          # AWS service clients
-        ├── bedrock_utils.py        # Bedrock AI utilities
-        ├── config.py               # Configuration management
-        ├── dlq_handler.py          # Dead letter queue handling
-        ├── error_handling.py       # Error handling and retry logic
-        ├── logging_config.py       # Structured logging
-        ├── metrics.py              # CloudWatch metrics
-        ├── sqs_processor.py        # SQS message processing
-        ├── sqs_utils.py            # SQS utilities
-        ├── tracing.py              # X-Ray tracing
-        └── tests/                  # Shared utility tests
+README.md
+deploy-complete.sh        # Unified build + deploy + verify script
+.env.dev                  # Environment variables (UI + Java API)
+java-api/                 # Spring Boot service (Docker/ECS/EKS deploy)
+ui/                       # React (Vite) application
+deployment/eks/           # Optional EKS helper scripts
+deployment/charts/rfp-java-api/  # Helm chart for Java API
+charts/                   # (If present) additional Helm resources
 ```
 
-## Getting Started
+## Prerequisites
 
-### Prerequisites
+- AWS CLI configured (access to ECR, ECS, S3, CloudFront, IAM)
+- Docker (for container builds & multi‑arch push)
+- Java 17+ & Maven
+- Node.js 18+ & npm
+- (Optional) kubectl, eksctl, helm for EKS deploy
 
-- AWS CLI configured with appropriate permissions
-- Python 3.11+
-- SAM.gov API key
+## Environment Configuration
 
-### Environment Variables
-
-Each Lambda function requires specific environment variables. See `src/shared/config.py` for the complete list.
-
-Key variables:
-- `SAM_API_KEY`: API key for SAM.gov access
-- `KNOWLEDGE_BASE_ID`: Bedrock Knowledge Base ID
-- `ENVIRONMENT`: Environment name (dev/staging/prod)
-
-### Deployment
-
-1. Set up your environment variables
-2. Run the deployment script:
-
-**Unix/Linux/macOS:**
+Edit `.env.dev` to set core values:
 ```bash
-./infrastructure/scripts/deploy.sh [environment] [sam-api-key]
+export BUCKET_PREFIX="dev"   # Short project prefix
+export ENVIRONMENT="dev"     # Environment label
+export REGION="us-east-1"    # AWS region
+export UI_BUCKET="dev-sam-website-dev"  # S3 bucket for UI assets
 ```
+Other variables (EKS, Bedrock model IDs) are optional and can remain blank.
 
-**Windows PowerShell:**
-```powershell
-.\infrastructure\scripts\deploy.ps1 [environment] [sam-api-key]
-```
-
-Additional deployment utilities:
-- `manage-config.sh` - Configuration management
-- `package-lambdas.sh` - Lambda function packaging
-- `rollback.sh` - Rollback to previous deployment
-
-See `infrastructure/DEPLOYMENT.md` for detailed deployment instructions.
-
-## Development
-
-### Shared Utilities
-
-The `src/shared/` directory contains common utilities used across all Lambda functions:
-
-- **AWS Clients**: Centralized AWS service client management with retry logic
-- **Bedrock Utils**: AI-powered opportunity matching utilities
-- **Logging**: Structured JSON logging for CloudWatch
-- **Error Handling**: Consistent error handling with retry strategies
-- **Configuration**: Environment variable management and constants
-- **Metrics**: CloudWatch metrics collection
-- **SQS Processing**: Message queue processing utilities
-- **Tracing**: X-Ray distributed tracing
-- **DLQ Handler**: Dead letter queue management
-
-### Adding New Lambda Functions
-
-1. Create a new directory under `src/lambdas/`
-2. Add `requirements.txt` with dependencies
-3. Create `handler.py` with your main logic
-4. Import shared utilities: `from shared import aws_clients, get_logger, config`
-5. Use the error handling decorator: `@handle_lambda_error`
-6. Add unit tests following the existing pattern
-
-### Testing
-
-Each Lambda function includes unit tests. Run tests using:
-
+Source the file when working locally:
 ```bash
-# For individual functions
-cd src/lambdas/[function-name]
-python -m pytest
-
-# For shared utilities
-cd src/shared
-python -m pytest tests/
+source .env.dev
 ```
 
-### CI/CD Pipeline
+## Deployment Script Overview
 
-The project uses GitHub Actions for continuous integration and deployment:
-- `.github/workflows/deploy.yml` - Manual deployment workflow
-- **Manual trigger only** - No automatic deployments on push/PR
-- Runs validation, tests, packages Lambda functions, and deploys to AWS
-- Can be triggered manually from GitHub Actions UI with environment selection
+`deploy-complete.sh` handles build, containerization, S3 sync, CloudFront setup, and basic verification.
 
-To run a manual deployment:
-1. Go to your GitHub repository → Actions tab
-2. Select "Deploy AI-powered RFP Response Agent"
-3. Click "Run workflow"
-4. Choose your target environment (dev/staging/prod)
+Common commands:
+```bash
+# Full build & deploy (Java API → ECS + UI → S3 + CloudFront)
+./deploy-complete.sh full
 
-### Task Reports
+# Build & deploy only Java API (ECS)
+./deploy-complete.sh java-api
 
-Implementation progress is tracked in the `reports/` directory:
-- Task completion reports document the implementation of each feature
-- Reports include implementation details, testing results, and deployment notes
+# Build & deploy only UI (S3 + CloudFront)
+./deploy-complete.sh ui
 
-## Monitoring
+# Create/verify CloudFront distribution only
+./deploy-complete.sh cloudfront
 
-The system includes comprehensive logging and monitoring:
+# Run lightweight verification
+./deploy-complete.sh verify
 
-- Structured JSON logs in CloudWatch
-- Correlation IDs for request tracing
-- Error categorization and retry logic
-- Performance metrics and alerting
+# Test deployed components (ECS service + UI presence)
+./deploy-complete.sh test
+```
 
-## Security
+Optional EKS flow:
+```bash
+# Create EKS cluster (if not existing)
+./deploy-complete.sh eks-cluster
 
-- IAM roles with least privilege access
-- Encryption at rest and in transit
-- Secure API key management
-- No PII in logs or temporary files
+# Deploy Java API to EKS via Helm
+./deploy-complete.sh java-api-eks
+```
+
+## Java API Local Development
+
+Run locally without Docker:
+```bash
+cd java-api
+mvn spring-boot:run
+```
+Or build the jar:
+```bash
+mvn clean package -DskipTests
+java -jar target/rfp-response-agent-api-1.0.0.jar
+```
+
+## React UI Local Development
+```bash
+cd ui
+npm install
+npm run dev
+```
+Build for production:
+```bash
+npm run build
+```
+
+## Container Build (Manual Example)
+```bash
+cd java-api
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REPO_NAME="${BUCKET_PREFIX}-rfp-java-api"
+IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$REPO_NAME:latest"
+aws ecr create-repository --repository-name "$REPO_NAME" --region "$REGION" 2>/dev/null || true
+aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com"
+docker build -t "$IMAGE_URI" .
+docker push "$IMAGE_URI"
+```
+
+## Verification
+```bash
+# Check ECS service
+aws ecs describe-services --cluster "${BUCKET_PREFIX}-ecs-cluster" --services "${BUCKET_PREFIX}-java-api-service" --region "$REGION"
+
+# Confirm UI index present
+aws s3 ls "s3://$UI_BUCKET/index.html"
+```
+
+## Troubleshooting (Focused)
+
+| Issue | Resolution |
+|-------|------------|
+| UI not updating | Run `./deploy-complete.sh ui`; if cached, invalidate CloudFront via script or AWS Console. |
+| ECS service failing health check | Check container logs in CloudWatch, ensure port 8080 open in security group. |
+| Docker multi-arch build failure | Remove buildx usage or create builder manually. |
+| Helm deploy fails | Confirm EKS cluster exists and kubeconfig updated (`aws eks update-kubeconfig`). |
+
+## Removed Components
+
+The following have been intentionally removed: Lambda functions, SQS queues, DynamoDB tables, EventBridge rules, legacy CloudFormation templates, serverless workflow scripts, SAM.gov ingestion jobs.
+
+## Next Steps
+
+- Add integration endpoints between UI and Java API
+- Introduce CI/CD pipeline (GitHub Actions / Jenkins) for container builds
+- Add CloudWatch alarms & dashboard for ECS service
+- Configure custom domain + HTTPS for CloudFront
+
+---
+This repository now represents a lean deployment model for the RFP Response Platform focused on UI + Java API only.

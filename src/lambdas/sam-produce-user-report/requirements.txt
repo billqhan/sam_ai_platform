@@ -1,2 +1,0 @@
-# python-docx dependencies cause issues in Lambda environment
-# Using RTF format for Word compatibility instead

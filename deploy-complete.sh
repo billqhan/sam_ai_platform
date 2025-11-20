@@ -27,98 +27,45 @@ log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_header() { echo -e "\n${PURPLE}═══ $1 ═══${NC}\n"; }
 log_warning() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 
-# Step 1: Full system verification and build
+# Step 1: Full deployment - Java API and UI only
 full_deployment() {
-    log_header "RUNNING FULL DEPLOYMENT"
+    log_header "RUNNING FULL DEPLOYMENT - JAVA API & UI"
     
-    # Run initial verification
-    ./deployment-verify.sh
+    # Build Java API
+    log_header "BUILDING JAVA API"
+    if [ -d "java-api" ]; then
+        cd java-api
+        mvn clean package -DskipTests
+        cd ..
+        log_success "Java API built successfully"
+    fi
     
-    # Deploy infrastructure + Lambda functions
-    log_header "DEPLOYING INFRASTRUCTURE"
-    deploy_infrastructure
-    
-    # Deploy API Gateway
-    log_header "DEPLOYING API GATEWAY"
-    deploy_api_gateway
-    
-    # Build and deploy Java API to ECS
-    log_header "DEPLOYING JAVA API"
-    ./deployment-verify.sh build
+    # Deploy Java API to ECS
+    log_header "DEPLOYING JAVA API TO ECS"
     deploy_java_api_ecs
     
-    # Deploy UI
-    log_header "DEPLOYING UI"
-    ./deployment-verify.sh deploy-ui
+    # Build and deploy UI
+    log_header "BUILDING & DEPLOYING UI"
+    if [ -d "ui" ]; then
+        cd ui
+        npm install
+        npm run build
+        cd ..
+        
+        local ui_bucket="${BUCKET_PREFIX}-sam-website-${ENVIRONMENT}"
+        aws s3 sync ui/dist/ "s3://$ui_bucket/" --delete
+        log_success "UI deployed to S3: $ui_bucket"
+    fi
     
     # Deploy CloudFront
+    log_header "DEPLOYING CLOUDFRONT"
     deploy_cloudfront
+    
+    log_success "\n✅ Full deployment complete!"
+    generate_deployment_report
 }
 
-# Step 2: Deploy infrastructure including Lambda functions and CloudFormation
-deploy_infrastructure() {
-    log_header "DEPLOYING INFRASTRUCTURE + LAMBDA FUNCTIONS + CLOUDFORMATION"
-    
-    # Step 2a: Deploy CloudFormation infrastructure
-    log_info "Deploying CloudFormation infrastructure stack..."
-    
-    # Check if stack exists
-    if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" >/dev/null 2>&1; then
-        local stack_status=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --query 'Stacks[0].StackStatus' --output text)
-        log_info "Stack $STACK_NAME exists with status: $stack_status"
-        
-        if [[ "$stack_status" == "ROLLBACK_COMPLETE" ]]; then
-            log_warning "Stack in ROLLBACK_COMPLETE state, deleting first..."
-            aws cloudformation delete-stack --stack-name "$STACK_NAME" --region "$REGION"
-            aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" --region "$REGION" 2>/dev/null || true
-            log_info "Stack deleted, will recreate"
-        fi
-    fi
-    
-    # Deploy or update stack using main-template.yaml (more complete than minimal-stack.yaml)
-    local cfn_template="infrastructure/cloudformation/main-template.yaml"
-    if [ ! -f "$cfn_template" ]; then
-        cfn_template="infrastructure/minimal-stack.yaml"
-    fi
-    
-    log_info "Using template: $cfn_template"
-    
-    if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" >/dev/null 2>&1; then
-        log_info "Creating new CloudFormation stack..."
-        aws cloudformation create-stack \
-            --stack-name "$STACK_NAME" \
-            --template-body "file://$cfn_template" \
-            --parameters \
-                ParameterKey=Environment,ParameterValue="$ENVIRONMENT" \
-                ParameterKey=BucketPrefix,ParameterValue="$BUCKET_PREFIX" \
-            --region "$REGION" \
-            --capabilities CAPABILITY_IAM \
-            --on-failure DO_NOTHING || log_warning "Stack creation initiated (may use existing resources)"
-    else
-        log_info "Stack exists, skipping CloudFormation deployment (use 'aws cloudformation update-stack' manually if needed)"
-    fi
-    
-    # Step 2b: Deploy Lambda functions
-    if command -v powershell >/dev/null 2>&1 || command -v pwsh >/dev/null 2>&1; then
-        log_info "Deploying Lambda functions via PowerShell..."
-        cd deployment
-        
-        local ps_cmd="powershell"
-        if command -v pwsh >/dev/null 2>&1; then
-            ps_cmd="pwsh"
-        fi
-        
-        $ps_cmd -File deploy-all-lambdas.ps1 -Environment "$ENVIRONMENT" -BucketPrefix "$BUCKET_PREFIX" -Region "$REGION"
-        cd ..
-        log_success "Lambda functions deployed"
-    else
-        log_warning "PowerShell not available - Lambda functions not deployed"
-        log_info "Install PowerShell: brew install --cask powershell"
-        log_info "Then run: cd deployment && pwsh -File deploy-all-lambdas.ps1"
-    fi
-}
-
-# Step 3: Deploy Java API with Docker to ECS
+# Step 2: Deploy Java API with Docker to ECS
 deploy_java_api_ecs() {
     log_header "DEPLOYING JAVA API WITH DOCKER TO ECS"
     
@@ -384,341 +331,7 @@ EOF
     echo "  aws ec2 describe-network-interfaces --network-interface-ids <eni-id> --region $REGION --query 'NetworkInterfaces[0].Association.PublicIp' --output text"
 }
 
-# Step 4: Deploy API Gateway
-deploy_api_gateway() {
-    log_header "DEPLOYING API GATEWAY"
-    
-    local stack_name="${BUCKET_PREFIX}-rfp-api-gateway"
-    local api_backend_zip="api-backend-lambda.zip"
-    
-    # Package the api-backend Lambda function
-    log_info "Packaging API backend Lambda function..."
-    cd src/lambdas/api-backend
-    
-    # Clean up old package
-    rm -f "$api_backend_zip"
-    
-    # Install dependencies if requirements.txt exists
-    if [ -f "requirements.txt" ]; then
-        log_info "Installing Python dependencies..."
-        pip3 install -r requirements.txt -t . --upgrade
-    fi
-    
-    # Create deployment package
-    zip -r "$api_backend_zip" . -x "*.pyc" -x "__pycache__/*" -x "*.zip"
-    
-    # Upload to S3
-    local lambda_bucket="ai-rfp-templates-dev"
-    log_info "Uploading Lambda package to S3..."
-    aws s3 cp "$api_backend_zip" "s3://${lambda_bucket}/lambda/${api_backend_zip}" --region "$REGION"
-    
-    cd ../../..
-    
-    # Deploy CloudFormation stack
-    log_info "Deploying API Gateway CloudFormation stack..."
-    
-    # Create a modified template that uses S3 for Lambda code
-    cat > /tmp/api-gateway-deploy.yaml <<EOF
-AWSTemplateFormatVersion: '2010-09-09'
-Description: 'API Gateway + Lambda Backend for RFP Response Agent UI'
-
-Parameters:
-  Environment:
-    Type: String
-    Default: '${ENVIRONMENT}'
-    Description: 'Environment name'
-  
-  ProjectPrefix:
-    Type: String
-    Default: '${BUCKET_PREFIX}'
-    Description: 'Prefix for resource naming'
-  
-  LambdaBucket:
-    Type: String
-    Default: '${lambda_bucket}'
-    Description: 'S3 bucket containing Lambda code'
-
-Resources:
-  # API Gateway REST API
-  RfpApiGateway:
-    Type: AWS::ApiGateway::RestApi
-    Properties:
-      Name: !Sub '\${ProjectPrefix}-rfp-api-\${Environment}'
-      Description: 'API Gateway for RFP Response Agent'
-      EndpointConfiguration:
-        Types:
-          - REGIONAL
-
-  # Root resource (already exists by default)
-  
-  # Workflow resource
-  WorkflowResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      RestApiId: !Ref RfpApiGateway
-      ParentId: !GetAtt RfpApiGateway.RootResourceId
-      PathPart: 'workflow'
-  
-  # Proxy resource under workflow
-  WorkflowProxyResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      RestApiId: !Ref RfpApiGateway
-      ParentId: !Ref WorkflowResource
-      PathPart: '{proxy+}'
-  
-  # Opportunities resource
-  OpportunitiesResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      RestApiId: !Ref RfpApiGateway
-      ParentId: !GetAtt RfpApiGateway.RootResourceId
-      PathPart: 'opportunities'
-  
-  # Proxy resource under opportunities
-  OpportunitiesProxyResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      RestApiId: !Ref RfpApiGateway
-      ParentId: !Ref OpportunitiesResource
-      PathPart: '{proxy+}'
-  
-  # API Backend Lambda Function
-  ApiBackendFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: !Sub '\${ProjectPrefix}-sam-api-backend-\${Environment}'
-      Description: 'API Gateway handler for RFP UI backend'
-      Runtime: python3.11
-      Handler: handler.lambda_handler
-      Role: !GetAtt ApiBackendRole.Arn
-      Code:
-        S3Bucket: !Ref LambdaBucket
-        S3Key: 'lambda/api-backend-lambda.zip'
-      MemorySize: 512
-      Timeout: 30
-      Environment:
-        Variables:
-          ENVIRONMENT: !Ref Environment
-          PROJECT_PREFIX: !Ref ProjectPrefix
-          DOWNLOAD_LAMBDA: !Sub '\${ProjectPrefix}-sam-gov-daily-download-\${Environment}'
-          PROCESSOR_LAMBDA: !Sub '\${ProjectPrefix}-sam-json-processor-\${Environment}'
-          MATCH_LAMBDA: !Sub '\${ProjectPrefix}-sam-sqs-generate-match-reports-\${Environment}'
-          WEB_REPORT_LAMBDA: !Sub '\${ProjectPrefix}-sam-produce-web-reports-\${Environment}'
-          USER_REPORT_LAMBDA: !Sub '\${ProjectPrefix}-sam-produce-user-report-\${Environment}'
-          EMAIL_LAMBDA: !Sub '\${ProjectPrefix}-sam-daily-email-notification-\${Environment}'
-          ARCHIVE_LAMBDA: !Sub '\${ProjectPrefix}-sam-merge-and-archive-result-logs-\${Environment}'
-  
-  # IAM Role for Lambda
-  ApiBackendRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-      Policies:
-        - PolicyName: LambdaInvoke
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - lambda:InvokeFunction
-                Resource: !Sub 'arn:aws:lambda:\${AWS::Region}:\${AWS::AccountId}:function:\${ProjectPrefix}-sam-*'
-              - Effect: Allow
-                Action:
-                  - dynamodb:GetItem
-                  - dynamodb:PutItem
-                  - dynamodb:UpdateItem
-                  - dynamodb:Query
-                  - dynamodb:Scan
-                Resource: !Sub 'arn:aws:dynamodb:\${AWS::Region}:\${AWS::AccountId}:table/*'
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:ListBucket
-                Resource:
-                  - !Sub 'arn:aws:s3:::\${ProjectPrefix}-*'
-                  - !Sub 'arn:aws:s3:::\${ProjectPrefix}-*/*'
-  
-  # Lambda Permission for API Gateway
-  ApiGatewayInvokePermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref ApiBackendFunction
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:\${AWS::Region}:\${AWS::AccountId}:\${RfpApiGateway}/*'
-  
-  # Methods for workflow proxy
-  WorkflowProxyMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref RfpApiGateway
-      ResourceId: !Ref WorkflowProxyResource
-      HttpMethod: ANY
-      AuthorizationType: NONE
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub 'arn:aws:apigateway:\${AWS::Region}:lambda:path/2015-03-31/functions/\${ApiBackendFunction.Arn}/invocations'
-  
-  # Methods for opportunities proxy
-  OpportunitiesProxyMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref RfpApiGateway
-      ResourceId: !Ref OpportunitiesProxyResource
-      HttpMethod: ANY
-      AuthorizationType: NONE
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub 'arn:aws:apigateway:\${AWS::Region}:lambda:path/2015-03-31/functions/\${ApiBackendFunction.Arn}/invocations'
-  
-  # CORS OPTIONS method for workflow
-  WorkflowOptionsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref RfpApiGateway
-      ResourceId: !Ref WorkflowProxyResource
-      HttpMethod: OPTIONS
-      AuthorizationType: NONE
-      Integration:
-        Type: MOCK
-        IntegrationResponses:
-          - StatusCode: 200
-            ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
-        RequestTemplates:
-          application/json: '{"statusCode": 200}'
-      MethodResponses:
-        - StatusCode: 200
-          ResponseParameters:
-            method.response.header.Access-Control-Allow-Headers: true
-            method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Origin: true
-  
-  # CORS OPTIONS method for opportunities
-  OpportunitiesOptionsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref RfpApiGateway
-      ResourceId: !Ref OpportunitiesProxyResource
-      HttpMethod: OPTIONS
-      AuthorizationType: NONE
-      Integration:
-        Type: MOCK
-        IntegrationResponses:
-          - StatusCode: 200
-            ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
-        RequestTemplates:
-          application/json: '{"statusCode": 200}'
-      MethodResponses:
-        - StatusCode: 200
-          ResponseParameters:
-            method.response.header.Access-Control-Allow-Headers: true
-            method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Origin: true
-  
-  # Deployment
-  ApiDeployment:
-    Type: AWS::ApiGateway::Deployment
-    DependsOn:
-      - WorkflowProxyMethod
-      - OpportunitiesProxyMethod
-      - WorkflowOptionsMethod
-      - OpportunitiesOptionsMethod
-    Properties:
-      RestApiId: !Ref RfpApiGateway
-      Description: !Sub 'Deployment for \${Environment}'
-  
-  # Stage
-  ApiStage:
-    Type: AWS::ApiGateway::Stage
-    Properties:
-      RestApiId: !Ref RfpApiGateway
-      DeploymentId: !Ref ApiDeployment
-      StageName: !Ref Environment
-      Description: !Sub '\${Environment} stage'
-      TracingEnabled: true
-
-Outputs:
-  ApiGatewayUrl:
-    Description: 'API Gateway URL'
-    Value: !Sub 'https://\${RfpApiGateway}.execute-api.\${AWS::Region}.amazonaws.com/\${Environment}'
-  
-  ApiGatewayId:
-    Description: 'API Gateway ID'
-    Value: !Ref RfpApiGateway
-  
-  ApiBackendFunctionArn:
-    Description: 'API Backend Lambda Function ARN'
-    Value: !GetAtt ApiBackendFunction.Arn
-EOF
-    
-    aws cloudformation deploy \
-        --template-file /tmp/api-gateway-deploy.yaml \
-        --stack-name "$stack_name" \
-        --capabilities CAPABILITY_IAM \
-        --region "$REGION" \
-        --parameter-overrides \
-            Environment="$ENVIRONMENT" \
-            ProjectPrefix="$BUCKET_PREFIX" \
-            LambdaBucket="$lambda_bucket"
-    
-    # Get the API Gateway URL
-    local api_url=$(aws cloudformation describe-stacks \
-        --stack-name "$stack_name" \
-        --region "$REGION" \
-        --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' \
-        --output text)
-    
-    local api_id=$(aws cloudformation describe-stacks \
-        --stack-name "$stack_name" \
-        --region "$REGION" \
-        --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayId`].OutputValue' \
-        --output text)
-    
-    log_success "API Gateway deployed successfully!"
-    log_info "API Gateway URL: $api_url"
-    log_info "API Gateway ID: $api_id"
-    
-    # Automatically update UI .env.production file
-    log_info ""
-    log_info "Updating UI .env.production with new API Gateway URL..."
-    cat > ui/.env.production <<EOF
-VITE_API_BASE_URL=$api_url
-VITE_AWS_REGION=$REGION
-VITE_ENVIRONMENT=$ENVIRONMENT
-EOF
-    
-    log_success "Updated ui/.env.production"
-    
-    # Rebuild and redeploy UI with new API Gateway URL
-    log_info ""
-    log_info "Rebuilding and redeploying UI with new API Gateway configuration..."
-    ./deployment-verify.sh deploy-ui
-    
-    log_success "UI rebuilt and redeployed with new API Gateway URL!"
-    log_info ""
-    log_info "Your UI is now connected to the API Gateway at:"
-    echo "  $api_url"
-}
-
-# Step 5: Deploy CloudFront Distribution
+# Step 3: Deploy CloudFront Distribution
 deploy_cloudfront() {
     log_header "DEPLOYING CLOUDFRONT DISTRIBUTION"
     
@@ -852,73 +465,33 @@ EOF
     fi
 }
 
-# Step 5: Test complete system
+# Step 3: Test complete system
 test_complete_system() {
-    log_header "TESTING COMPLETE SYSTEM"
+    log_header "TESTING JAVA API & UI"
     
-    # Test UI
-    log_info "Testing UI via CloudFront..."
-    if curl -s -I "https://dvik8huzkbem6.cloudfront.net" | head -n1 | grep -q "200\|301\|302"; then
-        log_success "✅ UI is accessible"
+    # Test UI in S3
+    log_info "Testing UI deployment..."
+    local ui_bucket="${BUCKET_PREFIX}-sam-website-${ENVIRONMENT}"
+    if aws s3 ls "s3://$ui_bucket/index.html" >/dev/null 2>&1; then
+        log_success "✅ UI deployed to S3: $ui_bucket"
     else
-        log_info "⏳ UI may still be propagating through CloudFront"
+        log_warning "⚠️  UI not found in S3"
     fi
     
-    # Test Lambda API
-    local lambda_name="${BUCKET_PREFIX}-sam-api-backend-${ENVIRONMENT}"
-    if aws lambda get-function --function-name "$lambda_name" >/dev/null 2>&1; then
-        log_success "✅ Lambda API is deployed"
+    # Test Java API on ECS
+    log_info "Testing Java API deployment..."
+    local cluster_name="${BUCKET_PREFIX}-ecs-cluster"
+    local service_name="${BUCKET_PREFIX}-java-api-service"
+    if aws ecs describe-services --cluster "$cluster_name" --services "$service_name" --region "$REGION" 2>/dev/null | grep -q "ACTIVE"; then
+        log_success "✅ Java API service running: $service_name"
+    else
+        log_warning "⚠️  Java API service not found or not active"
     fi
     
-    # Test DynamoDB tables
-    local tables_count=$(aws dynamodb list-tables --query "length(TableNames[?contains(@,'$BUCKET_PREFIX')])" --output text)
-    if [ "$tables_count" -gt 0 ]; then
-        log_success "✅ DynamoDB tables deployed ($tables_count tables)"
-    fi
-    
-    # Test S3 buckets
-    local buckets_count=$(aws s3 ls | grep -c "$BUCKET_PREFIX" || echo "0")
-    if [ "$buckets_count" -gt 0 ]; then
-        log_success "✅ S3 buckets deployed ($buckets_count buckets)"
-    fi
+    echo ""  
 }
 
-# Step 6: Deploy Lambda functions specifically  
-deploy_lambda_functions() {
-    log_header "DEPLOYING LAMBDA FUNCTIONS"
-    
-    if command -v powershell >/dev/null 2>&1 || command -v pwsh >/dev/null 2>&1; then
-        log_info "Deploying all Lambda functions with PowerShell..."
-        cd deployment
-        
-        local ps_cmd="powershell"
-        if command -v pwsh >/dev/null 2>&1; then
-            ps_cmd="pwsh"
-        fi
-        
-        # Deploy all Lambda functions:
-        # - sam-gov-daily-download (SAM.gov data retrieval)
-        # - sam-json-processor (Opportunity processing)
-        # - sam-sqs-generate-match-reports (AI matching)
-        # - sam-produce-user-report (Report generation)
-        # - sam-merge-and-archive-result-logs (Log management)
-        # - sam-produce-web-reports (Web dashboard)
-        # - sam-daily-email-notification (Email notifications)
-        # - api-backend (REST API backend)
-        
-        # TEMPLATES_BUCKET is already exported from .env.dev
-        $ps_cmd -File deploy-all-lambdas.ps1 -Environment "$ENVIRONMENT" -BucketPrefix "$BUCKET_PREFIX" -Region "$REGION"
-        cd ..
-        
-        log_success "Lambda functions deployment completed"
-    else
-        log_info "PowerShell not available for Lambda deployment"
-        log_info "Lambda functions require PowerShell scripts for packaging and deployment"
-        log_info "Manual deployment: cd deployment && powershell -File deploy-all-lambdas.ps1"
-    fi
-}
-
-# Step 7: Generate final deployment report
+# Step 4: Generate final deployment report
 generate_deployment_report() {
     log_header "DEPLOYMENT REPORT"
     
@@ -929,10 +502,9 @@ generate_deployment_report() {
     echo ""
     
     echo "🚀 DEPLOYED COMPONENTS:"
-    echo "  ✅ React UI: https://dvik8huzkbem6.cloudfront.net"
-    echo "  ✅ Java API: Built and ready (JAR: java-api/target/rfp-response-agent-api-1.0.0.jar)"
-    echo "  ✅ AWS Infrastructure: S3, DynamoDB, Lambda functions"
-    echo "  ✅ CloudFront CDN: Active and distributing UI globally"
+    echo "  ✅ Java API: ECS Cluster (${BUCKET_PREFIX}-ecs-cluster)"
+    echo "  ✅ React UI: S3 + CloudFront"
+    echo ""
     echo ""
     
     echo "📋 QUICK ACCESS COMMANDS:"
@@ -1074,15 +646,7 @@ case "${1:-full}" in
     "verify")
         ./deployment-verify.sh
         ;;
-    "infrastructure")
-        deploy_infrastructure
-        ;;
-    "lambda")
-        deploy_lambda_functions
-        ;;
-    "api-gateway")
-        deploy_api_gateway
-        ;;
+
     "java-api")
         ./deployment-verify.sh build
         deploy_java_api_ecs
@@ -1110,19 +674,18 @@ case "${1:-full}" in
       deploy_java_api_eks
       ;;
     *)
-        echo "Usage: $0 [verify|infrastructure|lambda|api-gateway|java-api|ui|cloudfront|test|full]"
+        echo "Usage: $0 [verify|java-api|ui|cloudfront|test|full|eks-cluster|java-api-eks]"
         echo ""
         echo "Commands:"
         echo "  verify         - Check prerequisites and current deployment status"
-        echo "  infrastructure - Deploy AWS CloudFormation infrastructure + Lambda functions"
-        echo "  lambda         - Deploy Lambda functions only (requires PowerShell)"
-        echo "  api-gateway    - Deploy API Gateway + Lambda backend for UI"
-        echo "  java-api       - Deploy Java API to ECS with Docker"
+        echo "  java-api       - Build and deploy Java API to ECS with Docker"
         echo "  ui             - Build and deploy React UI with CloudFront"
         echo "  cloudfront     - Create/update CloudFront distribution for UI"
-        echo "  test           - Test deployed components"
-        echo "  full           - Complete deployment verification and testing (default)"
-      echo "  eks-cluster    - Create EKS cluster (does not run in full by default)"
-      echo "  java-api-eks   - Deploy Java API to EKS via Helm (cluster first if needed)"
+        echo "  test           - Test deployed components (Java API & UI)"
+        echo "  full           - Complete deployment: Java API + UI + CloudFront (default)"
+        echo "  eks-cluster    - Create EKS cluster (optional, not in default flow)"
+        echo "  java-api-eks   - Deploy Java API to EKS via Helm"
+        echo ""
+        echo "NOTE: Lambda functions and API Gateway are managed in separate project"
         ;;
 esac

@@ -117,6 +117,12 @@ deploy_ui_assets() {
   log_header "DEPLOYING UI ASSETS TO S3"
   local ui_bucket="${BUCKET_PREFIX}-sam-website-${ENVIRONMENT}"
   if [ -d "ui/dist" ]; then
+    # Check if bucket exists, create if not
+    if ! aws s3api head-bucket --bucket "$ui_bucket" 2>/dev/null; then
+      log_info "S3 bucket $ui_bucket does not exist. Creating..."
+      aws s3 mb "s3://$ui_bucket" --region "$REGION"
+      log_success "Created S3 bucket: $ui_bucket"
+    fi
     aws s3 sync ui/dist/ "s3://$ui_bucket/" --delete
     log_success "UI assets synced to S3 bucket: $ui_bucket"
   else
@@ -429,18 +435,50 @@ deploy_cloudfront() {
     # Check if CloudFront distribution already exists for this bucket
     log_info "Checking for existing CloudFront distributions..."
     local existing_dist=$(aws cloudfront list-distributions --query "DistributionList.Items[?Origins.Items[?DomainName=='${domain_name}']].Id" --output text 2>/dev/null | tr -d '\n')
-    
+
     if [ -n "$existing_dist" ] && [ "$existing_dist" != "None" ]; then
-        log_success "CloudFront distribution already exists: $existing_dist"
-        local cf_domain=$(aws cloudfront get-distribution --id "$existing_dist" --query 'Distribution.DomainName' --output text 2>/dev/null)
-        if [ -n "$cf_domain" ]; then
-            log_info "CloudFront URL: https://$cf_domain"
-            export CLOUDFRONT_ID="$existing_dist"
-            return 0
+      log_success "Reusing existing CloudFront distribution: $existing_dist"
+      local cf_domain=$(aws cloudfront get-distribution --id "$existing_dist" --query 'Distribution.DomainName' --output text 2>/dev/null)
+      # Always ensure the S3 bucket policy allows the OAI for this distribution
+      local oai_id=$(aws cloudfront get-distribution --id "$existing_dist" --query 'Distribution.Origins.Items[0].S3OriginConfig.OriginAccessIdentity' --output text 2>/dev/null | awk -F'/' '{print $NF}')
+      if [ -n "$oai_id" ] && [ "$oai_id" != "None" ]; then
+        local oai_canonical_user=$(aws cloudfront get-cloud-front-origin-access-identity --id "$oai_id" --query 'CloudFrontOriginAccessIdentity.S3CanonicalUserId' --output text 2>/dev/null)
+        if [ -n "$oai_canonical_user" ]; then
+          local bucket_policy=$(cat <<EOF
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "AllowCloudFrontOAI",
+        "Effect": "Allow",
+        "Principal": {
+          "CanonicalUser": "$oai_canonical_user"
+        },
+        "Action": "s3:GetObject",
+        "Resource": "arn:aws:s3:::${ui_bucket}/*"
+      }
+    ]
+  }
+  EOF
+  )
+          echo "$bucket_policy" > /tmp/cf-bucket-policy.json
+          aws s3api put-bucket-policy --bucket "$ui_bucket" --policy file:///tmp/cf-bucket-policy.json
+          rm /tmp/cf-bucket-policy.json
+          log_success "S3 bucket policy updated for CloudFront OAI: $oai_id"
         fi
+      fi
+      if [ -n "$cf_domain" ]; then
+        log_info "CloudFront URL: https://$cf_domain"
+        export CLOUDFRONT_ID="$existing_dist"
+        return 0
+      else
+        log_warning "CloudFront distribution found but domain name could not be retrieved."
+        export CLOUDFRONT_ID="$existing_dist"
+        return 0
+      fi
     fi
-    
-    log_info "Creating new CloudFront distribution for S3 bucket: $ui_bucket"
+
+    log_info "No existing CloudFront distribution found. Creating new CloudFront distribution for S3 bucket: $ui_bucket"
     
     # Create CloudFront Origin Access Identity
     local oai_comment="${BUCKET_PREFIX}-ui-oai-${ENVIRONMENT}"

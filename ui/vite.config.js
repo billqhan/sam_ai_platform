@@ -2,11 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 
-export default defineConfig(({ mode }) => {
-  // Load .env.dev from project root (one level up) for development mode
-  const envFile = mode === 'development' ? '../.env.dev' : `.env.${mode}`;
+
+export default defineConfig(() => {
+  // Always load .env.dev from project root (one level up), regardless of mode
+  const envFile = '../.env.dev';
   const envPath = new URL(envFile, import.meta.url).pathname;
-  
   // Simple env file parser
   const env = {};
   try {

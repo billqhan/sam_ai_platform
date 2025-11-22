@@ -162,7 +162,9 @@ package_function() {
         print_status "Installing dependencies for $func_name..."
         
         # Install dependencies to build directory (Linux x86_64 compatible for Lambda)
-        pip3 install -r "$func_dir/requirements.txt" -t "$build_func_dir" --no-cache-dir --platform linux_x86_64
+        # Install dependencies into build directory. Removed --platform flag (was causing pip constraint errors).
+        # For true cross-platform builds, consider running this script inside a linux/amd64 Docker container.
+        pip3 install -r "$func_dir/requirements.txt" -t "$build_func_dir" --no-cache-dir
         
         if [[ $? -ne 0 ]]; then
             print_error "Failed to install dependencies for $func_name"
